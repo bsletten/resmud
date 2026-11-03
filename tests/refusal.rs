@@ -1,5 +1,7 @@
 //! Every refusal in the design's table, and the ones its edges add, each on its own: the
-//! error is part of the contract, and a refused request writes nothing.
+//! error is part of the contract, and a refused request writes nothing. Each test pins the
+//! exact sentence a player reads (`resmud::refusal` of the error, what a door shows), so a
+//! refusal stays plain words: no IRI, no angle brackets, no backticks.
 
 mod common;
 
@@ -16,12 +18,16 @@ fn denied(e: &Error) -> bool {
     matches!(e, Error::Denied(_))
 }
 
-/// The detail of a refusal, which a player reads.
+/// The sentence a player reads for a refusal: `resmud::refusal` of the error, which is what
+/// a door shows. Every one is plain words.
 fn said(answer: &resmud::ikigai_core::Result<String>) -> String {
     match answer {
-        Err(Error::Conflict(m)) | Err(Error::Denied(m)) => m.clone(),
-        Err(Error::InvalidArgument { detail, .. }) => detail.clone(),
-        other => panic!("expected a refusal, got {other:?}"),
+        Err(e) => {
+            let said = resmud::refusal(e);
+            assert!(resmud::is_plain(&said), "not plain: {said}");
+            said
+        }
+        Ok(text) => panic!("expected a refusal, got {text:?}"),
     }
 }
 
@@ -35,7 +41,7 @@ fn go_where_there_is_no_exit_is_a_conflict() {
     assert!(is(&refused, conflict), "{refused:?}");
     assert_eq!(
         said(&refused),
-        "there is no exit north from the kitchen: look to see the exits"
+        "There is no exit north from the kitchen: look to see the exits."
     );
     assert_eq!(w.file("character/alice.ttl"), alice);
 }
@@ -46,7 +52,10 @@ fn go_a_bearing_that_is_not_a_direction_is_an_invalid_argument() {
     for bearing in ["sideways", "North", "east!"] {
         let refused = w.play(&format!("sink urn:resmud:verb:name:go {bearing}"));
         assert!(is(&refused, invalid), "{bearing}: {refused:?}");
-        assert!(said(&refused).contains("is not a direction"), "{bearing}");
+        assert_eq!(
+            said(&refused),
+            format!("\"{bearing}\" is not a direction: say north, south, east, west, up or down.")
+        );
     }
 }
 
@@ -58,19 +67,23 @@ fn take_a_thing_that_is_not_here_is_a_conflict() {
     assert!(is(&refused, conflict), "{refused:?}");
     assert_eq!(
         said(&refused),
-        "the zebra is not here: look to see what is in the kitchen"
+        "The zebra is not here: look to see what is in the kitchen."
     );
     // Already carried.
     w.play("sink urn:resmud:verb:name:take lamp").unwrap();
     let refused = w.play("sink urn:resmud:verb:name:take lamp");
     assert!(is(&refused, conflict), "{refused:?}");
-    assert_eq!(said(&refused), "you already carry the lamp");
+    assert_eq!(said(&refused), "You already carry the lamp.");
     // In another room.
     w.play("sink urn:resmud:verb:name:drop lamp").unwrap();
     w.play("sink urn:resmud:verb:name:go east").unwrap();
     let lamp = w.file("thing/lamp.ttl");
     let refused = w.play("sink urn:resmud:verb:name:take lamp");
     assert!(is(&refused, conflict), "{refused:?}");
+    assert_eq!(
+        said(&refused),
+        "The lamp is not here: look to see what is in the garden."
+    );
     assert_eq!(w.file("thing/lamp.ttl"), lamp);
 }
 
@@ -81,7 +94,13 @@ fn take_or_drop_a_thing_that_is_not_a_name_is_an_invalid_argument() {
         for thing in ["Lamp", "lamp!", "-lamp"] {
             let refused = w.play(&format!("sink urn:resmud:verb:name:{verb} {thing}"));
             assert!(is(&refused, invalid), "{verb} {thing}: {refused:?}");
-            assert!(said(&refused).contains("is not the name of a thing"));
+            assert_eq!(
+                said(&refused),
+                format!(
+                    "\"{thing}\" is not the name of a thing: say it the way look shows it, \
+                     such as lamp."
+                )
+            );
         }
     }
 }
@@ -93,7 +112,7 @@ fn drop_a_thing_you_do_not_carry_is_a_conflict() {
     assert!(is(&refused, conflict), "{refused:?}");
     assert_eq!(
         said(&refused),
-        "you do not carry the lamp: look to see what you carry"
+        "You do not carry the lamp: look to see what you carry."
     );
 }
 
@@ -115,7 +134,8 @@ fn a_caller_who_plays_no_character_is_denied() {
         Scope::empty(),
     );
     assert!(is(&refused, denied), "{refused:?}");
-    // Names a principal that is not a character.
+    assert_eq!(said(&refused), NOT_PLAYING);
+    // Names a principal that is not a character: the refusal does not echo it.
     let stranger = anonymous.with_principal("urn:example:person:bob").unwrap();
     let refused = w.play_as(
         "sink urn:resmud:verb:name:take lamp",
@@ -123,7 +143,19 @@ fn a_caller_who_plays_no_character_is_denied() {
         Scope::empty(),
     );
     assert!(is(&refused, denied), "{refused:?}");
+    assert_eq!(said(&refused), NOT_PLAYING);
+    // Names a character the realm has no atom for.
+    let bob = resmud::player(&w.realm, "bob");
+    let refused = w.play_as(
+        "sink urn:resmud:verb:name:take lamp",
+        &bob,
+        resmud::corridor("bob"),
+    );
+    assert!(is(&refused, denied), "{refused:?}");
+    assert_eq!(said(&refused), NOT_PLAYING);
 }
+
+const NOT_PLAYING: &str = "You are not playing a character in this realm, so you cannot act in it.";
 
 #[test]
 fn a_move_without_the_play_capability_is_denied_by_the_declared_floor() {
@@ -139,6 +171,34 @@ fn a_move_without_the_play_capability_is_denied_by_the_declared_floor() {
     ] {
         let refused = w.play_as(line, &reader, resmud::corridor("alice"));
         assert!(is(&refused, denied), "{line}: {refused:?}");
+        // The kernel's own denial names the capability by IRI; a player reads this.
+        assert_eq!(
+            said(&refused),
+            "You may not do that here: ask what you can do here to see what you may.",
+            "{line}"
+        );
+    }
+}
+
+#[test]
+fn a_move_given_nothing_to_act_on_says_what_it_needs() {
+    let w = World::new();
+    for line in [
+        "sink urn:resmud:verb:name:go",
+        "sink urn:resmud:verb:name:take",
+        "sink urn:resmud:verb:name:drop",
+    ] {
+        let refused = w.play(line);
+        assert!(
+            matches!(refused, Err(Error::MissingArgument(_))),
+            "{line}: {refused:?}"
+        );
+        assert_eq!(
+            said(&refused),
+            "That needs one more word: a direction to go, or the thing to take, drop or run a \
+             verb on, such as take lamp.",
+            "{line}"
+        );
     }
 }
 
@@ -152,6 +212,10 @@ fn an_atom_cannot_be_written_by_its_public_name() {
     assert!(
         matches!(refused, Err(Error::Unsupported { .. })),
         "a public atom name is a Source-only view: {refused:?}"
+    );
+    assert_eq!(
+        said(&refused),
+        "That cannot be done to it: ask what you can do here."
     );
     assert_eq!(w.file("thing/lamp.ttl"), lamp);
 }
@@ -169,7 +233,20 @@ fn the_realms_files_are_unreachable_from_outside_it() {
             matches!(refused, Err(Error::Unresolved(_))),
             "{line}: {refused:?}"
         );
+        assert_eq!(
+            said(&refused),
+            "There is nothing by that name in this realm.",
+            "{line}"
+        );
     }
+    // A room the realm does not have: its file's absence names the file, which a player
+    // does not read.
+    let refused = w.play("source urn:resmud:view:room:id:attic");
+    assert!(matches!(refused, Err(Error::NotFound(_))), "{refused:?}");
+    assert_eq!(
+        said(&refused),
+        "There is nothing by that name in this realm."
+    );
 }
 
 // ---- the verb runner ----------------------------------------------------------------------
@@ -181,11 +258,7 @@ fn a_verb_whose_source_was_changed_after_signing_is_denied() {
     let lamp = w.file("thing/lamp.ttl");
     let refused = w.play("sink urn:resmud:verb:id:polish lamp");
     assert!(is(&refused, denied), "{refused:?}");
-    assert!(
-        said(&refused).contains("is not what alice signed"),
-        "{}",
-        said(&refused)
-    );
+    assert_eq!(said(&refused), NOT_SIGNED);
     assert_eq!(w.file("thing/lamp.ttl"), lamp);
 }
 
@@ -195,7 +268,12 @@ fn a_verb_signed_by_someone_other_than_its_author_is_denied() {
     w.publish_with("polish", POLISH, &w.sign_with(MALLORY_PRIVATE_KEY, POLISH));
     let refused = w.play("sink urn:resmud:verb:id:polish lamp");
     assert!(is(&refused, denied), "{refused:?}");
+    // The signature's own verdict (the keys, the hashes) is not shown to a player.
+    assert_eq!(said(&refused), NOT_SIGNED);
 }
+
+const NOT_SIGNED: &str = "The verb polish is not what alice signed, so it does not run: it was \
+                          changed after it was signed, or someone else signed it.";
 
 #[test]
 fn a_verb_that_names_no_author_or_an_unknown_one_is_denied() {
@@ -204,15 +282,29 @@ fn a_verb_that_names_no_author_or_an_unknown_one_is_denied() {
     w.publish_part("polish", "signature", &w.sign(POLISH));
     let refused = w.play("sink urn:resmud:verb:id:polish lamp");
     assert!(is(&refused, denied), "{refused:?}");
-    assert!(said(&refused).contains("names no author"));
+    assert_eq!(
+        said(&refused),
+        "The verb polish names no author, so its signature cannot be checked: its author can \
+         publish it again with their name."
+    );
     // An author the realm has not registered has no key to check against.
     w.publish_part("polish", "author", "mallory");
     let refused = w.play("sink urn:resmud:verb:id:polish lamp");
     assert!(is(&refused, denied), "{refused:?}");
+    assert_eq!(
+        said(&refused),
+        "The verb polish names mallory as its author, and this realm has no author called \
+         mallory, so its signature cannot be checked."
+    );
     // Nor is an author's name allowed to be anything but a key.
     w.publish_part("polish", "author", "../alice");
     let refused = w.play("sink urn:resmud:verb:id:polish lamp");
     assert!(is(&refused, denied), "{refused:?}");
+    assert_eq!(
+        said(&refused),
+        "The verb polish names \"../alice\" as its author, and no author has that name, so \
+         its signature cannot be checked."
+    );
 }
 
 #[test]
@@ -229,10 +321,10 @@ fn a_verb_runs_under_no_more_than_its_authors_grant() {
     let kitchen = w.file("room/kitchen.ttl");
     let refused = w.play("sink urn:resmud:verb:id:redecorate");
     assert!(is(&refused, denied), "{refused:?}");
-    assert!(
-        said(&refused).contains("do not cover writing a room"),
-        "{}",
-        said(&refused)
+    assert_eq!(
+        said(&refused),
+        "The verb redecorate writes the kitchen, and it runs under no more than both alice's \
+         grant and yours, which together do not cover writing a room."
     );
     assert_eq!(w.file("room/kitchen.ttl"), kitchen);
     // And no more than its CALLER holds: a caller who may run verbs but write nothing
@@ -251,16 +343,29 @@ fn a_verb_runs_under_no_more_than_its_authors_grant() {
         resmud::corridor("alice"),
     );
     assert!(is(&refused, denied), "{refused:?}");
+    assert_eq!(
+        said(&refused),
+        "The verb polish writes the lamp, and it runs under no more than both alice's grant \
+         and yours, which together do not cover writing a thing."
+    );
     assert_eq!(w.file("thing/lamp.ttl"), lamp);
 }
 
 #[test]
 fn a_verb_that_writes_a_sealed_name_is_denied() {
     let w = World::new();
-    for (name, subject) in [
-        ("annex", "urn:resmud:realm:id:first"),
-        ("repeal", "urn:resmud:realm:id:first:shape:item"),
-        ("usurp", "urn:resmud:author:id:alice"),
+    for (name, subject, what) in [
+        ("annex", "urn:resmud:realm:id:first", "the realm itself"),
+        (
+            "repeal",
+            "urn:resmud:realm:id:first:shape:item",
+            "the realm's rules",
+        ),
+        (
+            "usurp",
+            "urn:resmud:author:id:alice",
+            "who the realm's authors are",
+        ),
     ] {
         let before = (
             w.file("realm.ttl"),
@@ -277,7 +382,13 @@ fn a_verb_that_writes_a_sealed_name_is_denied() {
         );
         let refused = w.play(&format!("sink urn:resmud:verb:id:{name}"));
         assert!(is(&refused, denied), "{name}: {refused:?}");
-        assert!(said(&refused).contains("is sealed"), "{name}");
+        assert_eq!(
+            said(&refused),
+            format!(
+                "The verb {name} would change {what}, and no verb may change the realm, its \
+                 rules or its authors: that is legislation, not play."
+            )
+        );
         let after = (
             w.file("realm.ttl"),
             w.file("shape.ttl"),
@@ -300,8 +411,8 @@ fn a_thing_without_a_text_description_is_refused_by_the_shapes() {
     assert!(is(&refused, invalid), "{refused:?}");
     assert_eq!(
         said(&refused),
-        "the realm's shapes refuse the verb conjure: urn:resmud:thing:id:pebble has no \
-         rm:description, and every thing needs a text description: give it one"
+        "The realm's rules refuse the verb conjure: the pebble has no description, and every \
+         thing needs a text description, so give it one."
     );
     assert!(!w.root().join("thing/pebble.ttl").exists());
 }
@@ -312,6 +423,18 @@ fn a_verb_on_a_thing_that_is_not_a_name_is_an_invalid_argument() {
     w.publish("polish", POLISH);
     let refused = w.play("sink urn:resmud:verb:id:polish Lamp!");
     assert!(is(&refused, invalid), "{refused:?}");
+    assert_eq!(
+        said(&refused),
+        "\"Lamp!\" is not the name of a thing: say it the way look shows it, such as lamp."
+    );
+    // Nor is a verb's own name anything but a key.
+    let refused = w.play("sink urn:resmud:verb:id:Polish lamp");
+    assert!(is(&refused, invalid), "{refused:?}");
+    assert_eq!(
+        said(&refused),
+        "\"Polish\" is not the name of a verb: say it the way its author published it, such as \
+         polish."
+    );
 }
 
 #[test]
@@ -323,6 +446,11 @@ fn a_verb_that_needs_a_thing_and_is_given_none_is_refused() {
         matches!(refused, Err(Error::MissingArgument(ref name)) if name == "content"),
         "{refused:?}"
     );
+    assert_eq!(
+        said(&refused),
+        "That needs one more word: a direction to go, or the thing to take, drop or run a verb \
+         on, such as take lamp."
+    );
 }
 
 #[test]
@@ -331,4 +459,32 @@ fn a_verb_whose_source_is_not_a_graph_is_an_invalid_argument() {
     w.publish("broken", "(select (?x) (where (?x ?y ?z)))");
     let refused = w.play("sink urn:resmud:verb:id:broken");
     assert!(is(&refused, invalid), "{refused:?}");
+    // The transreptor's own words name itself by IRI; the runner says it plainly.
+    assert_eq!(
+        said(&refused),
+        "The verb broken cannot run, because its source is not a graph of changes: its author \
+         can fix it and publish it again."
+    );
+}
+
+#[test]
+fn a_verb_that_writes_outside_the_realm_or_nothing_is_an_invalid_argument() {
+    let w = World::new();
+    w.publish(
+        "elsewhere",
+        r#"(graph
+  (prefix (rm "https://iriref.org/resmud/core#"))
+  ((iri "urn:example:lamp") rm:description "A lamp somewhere else."))"#,
+    );
+    let refused = w.play("sink urn:resmud:verb:id:elsewhere");
+    assert!(is(&refused, invalid), "{refused:?}");
+    assert_eq!(
+        said(&refused),
+        "The verb elsewhere writes something that is not a thing, character or room of this \
+         realm, so it does not run."
+    );
+    w.publish("idle", "(graph)");
+    let refused = w.play("sink urn:resmud:verb:id:idle");
+    assert!(is(&refused, invalid), "{refused:?}");
+    assert_eq!(said(&refused), "The verb idle changes nothing.");
 }

@@ -106,8 +106,12 @@ fn the_smallest_playable_thing_plays_through_on_the_text_face() {
     let refused = w.play("sink urn:resmud:verb:id:conjure");
     match &refused {
         Err(Error::InvalidArgument { detail, .. }) => {
-            assert!(detail.contains("urn:resmud:thing:id:pebble"), "{detail}");
-            assert!(detail.contains("text description"), "{detail}");
+            // Named by its label, never its IRI.
+            assert_eq!(
+                detail,
+                "the realm's rules refuse the verb conjure: the pebble has no description, and \
+                 every thing needs a text description, so give it one"
+            );
         }
         other => panic!("expected the shapes to refuse it, got {other:?}"),
     }
@@ -137,12 +141,10 @@ fn every_answer_of_the_text_face_is_plain_text() {
         assert_eq!(answer.repr_type.media_type, "text/plain", "{line}");
         let said = String::from_utf8(answer.bytes).expect("UTF-8 text");
         assert!(!said.is_empty(), "{line} said nothing");
-        // Plain text only: no terminal escape (so no color), no markup.
+        // Plain text only: no terminal escape (so no color), no markup, no IRI, and no
+        // angle brackets (the affordance list included).
         assert!(!said.contains('\u{1b}'), "{line}: {said:?}");
-        assert!(
-            !said.contains('<') || line.contains("affordance"),
-            "{line}: {said:?}"
-        );
+        assert!(resmud::is_plain(&said), "{line}: {said:?}");
     }
 }
 
@@ -151,10 +153,10 @@ fn the_affordance_is_the_realms_actions_under_the_callers_capability() {
     let w = World::new();
     assert_eq!(
         w.play("source urn:resmud:affordance").unwrap(),
-        "<verb> <thing>: run a verb a player wrote, such as polish\n\
-         drop <thing>: put down a thing you carry\n\
-         go <direction>: walk through an exit (north, south, east, west, up or down)\n\
-         take <thing>: pick up a thing that is here"
+        "a verb a player wrote, then a thing: run it on that thing, such as polish lamp\n\
+         drop a thing: put down a thing you carry\n\
+         go a direction: walk through an exit (north, south, east, west, up or down)\n\
+         take a thing: pick up a thing that is here"
     );
     // A visitor who may read but not play is offered nothing to do, and is refused the
     // moves it was not offered: the list is the parser.

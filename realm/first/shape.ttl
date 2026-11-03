@@ -1,5 +1,7 @@
 # The realm's shapes: what may exist here. The first rule is the accessibility floor:
-# every thing has a text description. Sealed: no verb may write it.
+# every thing has a text description. Sealed: no verb may write it. Each sh:message is read
+# by a player, after the thing's name ("the pebble has no description, …"), so it is plain
+# words: no IRI and no prefixed name.
 @prefix rm:   <https://iriref.org/resmud/core#> .
 @prefix rms:  <https://iriref.org/resmud/space#> .
 @prefix sh:   <http://www.w3.org/ns/shacl#> .
@@ -11,7 +13,7 @@
 <urn:resmud:realm:id:first:shape:item:description>
     sh:path rm:description ;
     sh:minCount 1 ;
-    sh:message "has no rm:description, and every thing needs a text description: give it one" .
+    sh:message "has no description, and every thing needs a text description, so give it one" .
 
 <urn:resmud:realm:id:first:shape:character> a sh:NodeShape ;
     sh:targetClass rm:Character ;
@@ -20,7 +22,7 @@
 <urn:resmud:realm:id:first:shape:character:description>
     sh:path rm:description ;
     sh:minCount 1 ;
-    sh:message "has no rm:description, and every character needs a text description: give it one" .
+    sh:message "has no description, and every character needs a text description, so give it one" .
 
 <urn:resmud:realm:id:first:shape:room> a sh:NodeShape ;
     sh:targetClass rms:Room ;
@@ -29,4 +31,4 @@
 <urn:resmud:realm:id:first:shape:room:description>
     sh:path rm:description ;
     sh:minCount 1 ;
-    sh:message "has no rm:description, and every room needs a text description: give it one" .
+    sh:message "has no description, and every room needs a text description, so give it one" .

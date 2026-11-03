@@ -1,5 +1,7 @@
 # The realm atom: its label, the IRI of its shapes, and the actions its manifold allows.
-# Sealed: no verb may write it.
+# Sealed: no verb may write it. Each action's label is a line of the affordance list a player
+# reads: plain words, with no angle brackets (a screen reader may read them as "less than"
+# and "greater than").
 @prefix rm:   <https://iriref.org/resmud/core#> .
 @prefix rml:  <urn:resmud:term:name:> .
 @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
@@ -14,16 +16,16 @@
 
 <urn:resmud:realm:id:first:action:go>
     rml:pattern "urn:resmud:verb:name:go" ;
-    rdfs:label "go <direction>: walk through an exit (north, south, east, west, up or down)" .
+    rdfs:label "go a direction: walk through an exit (north, south, east, west, up or down)" .
 
 <urn:resmud:realm:id:first:action:take>
     rml:pattern "urn:resmud:verb:name:take" ;
-    rdfs:label "take <thing>: pick up a thing that is here" .
+    rdfs:label "take a thing: pick up a thing that is here" .
 
 <urn:resmud:realm:id:first:action:drop>
     rml:pattern "urn:resmud:verb:name:drop" ;
-    rdfs:label "drop <thing>: put down a thing you carry" .
+    rdfs:label "drop a thing: put down a thing you carry" .
 
 <urn:resmud:realm:id:first:action:verb>
     rml:pattern "urn:resmud:verb:id:{verb}" ;
-    rdfs:label "<verb> <thing>: run a verb a player wrote, such as polish" .
+    rdfs:label "a verb a player wrote, then a thing: run it on that thing, such as polish lamp" .

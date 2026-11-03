@@ -20,6 +20,10 @@
 //!    the realm's shapes in a corridor holding only the candidate and the shapes (the stored
 //!    `validate` query). A violation is `InvalidArgument`, naming the thing and the rule.
 //! 5. **The write**: every atom, under the clamp. A new atom also joins the world's list.
+//!
+//! Every refusal names things by the word a player sees (the verb's name, its author's, `the
+//! lamp`), never by IRI. A signature's own verdict (which hash, which key) is not shown to a
+//! player: it says only that the verb is not what its author signed.
 
 use std::sync::Arc;
 
@@ -48,13 +52,22 @@ impl Atom {
     }
 }
 
-/// The atom `subject` names, or the refusal for writing it: `Denied` for a sealed name,
-/// `InvalidArgument` for a name that is not an atom of the realm.
-fn atom_of(subject: &str) -> Result<Atom> {
-    if subject.starts_with("urn:resmud:realm:") || subject.starts_with("urn:resmud:author:") {
+/// The atom `subject` names, or the refusal for verb `verb` writing it: `Denied` for a
+/// sealed name, `InvalidArgument` for a name that is not an atom of the realm.
+fn atom_of(verb: &str, subject: &str) -> Result<Atom> {
+    let sealed = if subject.starts_with("urn:resmud:author:") {
+        Some("who the realm's authors are")
+    } else if subject.starts_with("urn:resmud:realm:") && subject.contains(":shape") {
+        Some("the realm's rules")
+    } else if subject.starts_with("urn:resmud:realm:") {
+        Some("the realm itself")
+    } else {
+        None
+    };
+    if let Some(what) = sealed {
         return Err(Error::Denied(format!(
-            "{subject} is sealed: no verb may change the realm, its shapes or its authors, \
-             because changing what may exist is legislation, not play"
+            "the verb {verb} would change {what}, and no verb may change the realm, its rules \
+             or its authors: that is legislation, not play"
         )));
     }
     let parsed = subject
@@ -71,7 +84,8 @@ fn atom_of(subject: &str) -> Result<Atom> {
         None => Err(Error::InvalidArgument {
             name: "plan".into(),
             detail: format!(
-                "the verb writes {subject}, which is not a thing, character or room of this realm"
+                "the verb {verb} writes something that is not a thing, character or room of this \
+                 realm, so it does not run"
             ),
         }),
     }
@@ -110,12 +124,14 @@ async fn verify(inv: &Invocation<'_>, verb: &str) -> Result<String> {
         Ok(author) if is_key(&author) => author,
         Ok(author) => {
             return Err(Error::Denied(format!(
-                "the verb {verb} names `{author}` as its author, which is not an author's key"
+                "the verb {verb} names \"{author}\" as its author, and no author has that name, \
+                 so its signature cannot be checked"
             )))
         }
         Err(Error::NotFound(_)) => {
             return Err(Error::Denied(format!(
-                "the verb {verb} names no author, so its signature cannot be checked"
+                "the verb {verb} names no author, so its signature cannot be checked: its author \
+                 can publish it again with their name"
             )))
         }
         Err(e) => return Err(e),
@@ -129,9 +145,16 @@ async fn verify(inv: &Invocation<'_>, verb: &str) -> Result<String> {
         );
     let verdict = match inv.issue(request).await {
         Ok(answer) => String::from_utf8_lossy(&answer.bytes).trim().to_string(),
-        Err(e) => {
+        Err(Error::NotFound(_) | Error::Unresolved(_)) => {
             return Err(Error::Denied(format!(
-                "the verb {verb}'s signature cannot be checked against {author}'s key: {e}"
+                "the verb {verb} names {author} as its author, and this realm has no author \
+                 called {author}, so its signature cannot be checked"
+            )))
+        }
+        Err(_) => {
+            return Err(Error::Denied(format!(
+                "the verb {verb}'s signature cannot be checked against {author}'s key, so it \
+                 does not run"
             )))
         }
     };
@@ -139,7 +162,8 @@ async fn verify(inv: &Invocation<'_>, verb: &str) -> Result<String> {
         Ok(author)
     } else {
         Err(Error::Denied(format!(
-            "the verb {verb} is not what {author} signed ({verdict}), so it does not run"
+            "the verb {verb} is not what {author} signed, so it does not run: it was changed \
+             after it was signed, or someone else signed it"
         )))
     }
 }
@@ -196,19 +220,15 @@ pub fn runner(realm: Realm) -> AsyncFnEndpoint {
             if !is_key(&verb) {
                 return Err(Error::InvalidArgument {
                     name: "verb".into(),
-                    detail: format!("`{verb}` is not the name of a verb"),
+                    detail: format!(
+                        "\"{verb}\" is not the name of a verb: say it the way its author \
+                         published it, such as polish"
+                    ),
                 });
             }
             let target = match inv.inline_str("content") {
                 Ok(raw) if is_key(raw.trim()) => format!("urn:resmud:thing:id:{}", raw.trim()),
-                Ok(raw) => {
-                    return Err(Error::InvalidArgument {
-                        name: "content".into(),
-                        detail: format!(
-                            "`{raw}` is not the name of a thing: use its key, such as `lamp`"
-                        ),
-                    })
-                }
+                Ok(raw) => return Err(crate::edge::not_a_thing(raw.trim())),
                 Err(Error::MissingArgument(_)) => TARGET.to_string(),
                 Err(e) => return Err(e),
             };
@@ -230,16 +250,28 @@ pub fn runner(realm: Realm) -> AsyncFnEndpoint {
 
             // 3. The plan, and the atoms it rewrites. Every refusal comes before any write.
             let plan = format!("urn:resmud:verb:id:{verb}:plan");
+            // The plan is the source's transreption, so a source that is not a graph of
+            // changes is refused there, in the transreptor's words; a player reads this.
             let subjects = select(
                 inv,
                 ArgRef::Reference(iri("urn:resmud:query:id:subject")),
                 &plan,
                 json!({ "plan": uri(&plan), "target": uri(&target) }),
             )
-            .await?;
+            .await
+            .map_err(|e| match e {
+                Error::InvalidArgument { .. } => Error::InvalidArgument {
+                    name: "plan".into(),
+                    detail: format!(
+                        "the verb {verb} cannot run, because its source is not a graph of \
+                         changes: its author can fix it and publish it again"
+                    ),
+                },
+                e => e,
+            })?;
             let atoms = subjects
                 .iter()
-                .map(|s| atom_of(s))
+                .map(|s| atom_of(&verb, s))
                 .collect::<Result<Vec<_>>>()?;
             if atoms.is_empty() {
                 return Err(Error::InvalidArgument {
@@ -251,9 +283,9 @@ pub fn runner(realm: Realm) -> AsyncFnEndpoint {
                 let token = format!("{CAP_WRITE_PREFIX}{}", atom.kind);
                 if !clamp.allows(&token) {
                     return Err(Error::Denied(format!(
-                        "the verb {verb} writes {}, and it runs under no more than both \
+                        "the verb {verb} writes the {}, and it runs under no more than both \
                          {author}'s grant and yours, which together do not cover writing a {}",
-                        atom.name, atom.kind
+                        atom.key, atom.kind
                     )));
                 }
             }
@@ -291,7 +323,7 @@ pub fn runner(realm: Realm) -> AsyncFnEndpoint {
                     return Err(Error::InvalidArgument {
                         name: "plan".into(),
                         detail: format!(
-                            "the realm's shapes refuse the verb {verb}: {}",
+                            "the realm's rules refuse the verb {verb}: {}",
                             refused.join("; ")
                         ),
                     });
@@ -373,7 +405,10 @@ mod tests {
             "urn:resmud:realm:id:first",
             "urn:resmud:author:id:alice",
         ] {
-            assert!(matches!(atom_of(sealed), Err(Error::Denied(_))), "{sealed}");
+            assert!(
+                matches!(atom_of("annex", sealed), Err(Error::Denied(_))),
+                "{sealed}"
+            );
         }
     }
 
@@ -385,16 +420,19 @@ mod tests {
             "urn:example:lamp",
         ] {
             assert!(
-                matches!(atom_of(name), Err(Error::InvalidArgument { .. })),
+                matches!(atom_of("polish", name), Err(Error::InvalidArgument { .. })),
                 "{name}"
             );
         }
-        assert!(matches!(atom_of(TARGET), Err(Error::MissingArgument(_))));
+        assert!(matches!(
+            atom_of("polish", TARGET),
+            Err(Error::MissingArgument(_))
+        ));
     }
 
     #[test]
     fn an_atom_maps_to_its_file() {
-        let atom = atom_of("urn:resmud:thing:id:lamp").unwrap();
+        let atom = atom_of("polish", "urn:resmud:thing:id:lamp").unwrap();
         assert_eq!(atom.file(), "urn:file:thing/lamp.ttl");
     }
 

@@ -11,16 +11,21 @@
 //!   grant, validates the patch against the realm's shapes and writes it;
 //! - [`query`]: one adapter, `urn:resmud:query`, that binds a NAME into a stored SPARQL query
 //!   and answers its `?line` column as plain text. It is code because a named request cannot
-//!   carry a SPARQL binding (see its docs); the map as built says so.
+//!   carry a SPARQL binding (see its docs); the map as built says so;
+//! - [`refusal`]: what a player reads when a request is refused, one plain sentence, mapped
+//!   at the edge because some refusals are the kernel's own and name resources by IRI.
 //!
 //! Every ResMUD name lives under [`NAMESPACE`], and resolves through an [`ikigai_core`]
 //! kernel built by [`kernel`].
 #![forbid(unsafe_code)]
 
 pub mod edge;
+mod plain;
 pub mod query;
 pub mod runner;
 mod text;
+
+pub use plain::{is_plain, refusal};
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;

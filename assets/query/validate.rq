@@ -1,8 +1,10 @@
-# The realm's shapes, checked against one candidate atom: one line per violation.
-# This answers the SHACL Core fragment the realm's shapes use (sh:targetClass, a
-# predicate sh:path, sh:minCount, sh:message); a shape using anything else is not
-# checked by it.
-PREFIX sh: <http://www.w3.org/ns/shacl#>
+# The realm's shapes, checked against one candidate atom: one line per violation, which a
+# player reads: the thing's name (its rdfs:label, or its key), then the shape's sh:message,
+# so the line names no IRI ("the pebble has no description, ..."). This answers the SHACL
+# Core fragment the realm's shapes use (sh:targetClass, a predicate sh:path, sh:minCount,
+# sh:message); a shape using anything else is not checked by it.
+PREFIX sh:   <http://www.w3.org/ns/shacl#>
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
 SELECT ?line WHERE {
   GRAPH <urn:resmud:candidate:shape> {
     ?shape sh:targetClass ?class ; sh:property ?property .
@@ -16,8 +18,15 @@ SELECT ?line WHERE {
     }
     GROUP BY ?focus ?path
   }
+  OPTIONAL {
+    SELECT ?focus (MIN(STR(?label)) AS ?name) WHERE {
+      GRAPH <urn:resmud:candidate:data> { ?focus rdfs:label ?label }
+    }
+    GROUP BY ?focus
+  }
   FILTER(COALESCE(?count, 0) < ?min)
-  BIND(CONCAT(STR(?focus), " ", COALESCE(?message,
-       CONCAT("needs at least ", STR(?min), " ", STR(?path)))) AS ?line)
+  BIND(CONCAT("the ", COALESCE(?name, STRAFTER(STR(?focus), ":id:")), " ",
+       COALESCE(?message, CONCAT("needs at least ", STR(?min), " ",
+                                 REPLACE(STR(?path), "^.*[#/:]", "")))) AS ?line)
 }
 ORDER BY ?line
