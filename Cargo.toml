@@ -1,0 +1,14 @@
+[package]
+name = "resmud"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.87"
+license = "MIT OR Apache-2.0"
+description = "ResMUD: shared, programmable worlds on ikigai. A world programmable from inside itself, where the selection funnel is the parser."
+repository = "https://github.com/bsletten/resmud"
+publish = false
+
+[dependencies]
+# The kernel: ResMUD's names resolve through it. 0.3.0 is the release every module this game
+# builds on is published against (the scoped content store).
+ikigai-core = "0.3.0"
