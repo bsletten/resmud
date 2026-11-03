@@ -1,0 +1,29 @@
+# The realm atom: its label, the IRI of its shapes, and the actions its manifold allows.
+# Sealed: no verb may write it.
+@prefix rm:   <https://iriref.org/resmud/core#> .
+@prefix rml:  <urn:resmud:term:name:> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+
+<urn:resmud:realm:id:first> a rm:Realm ;
+    rdfs:label "The first realm" ;
+    rml:shapes <urn:resmud:realm:id:first:shape> ;
+    rml:allows <urn:resmud:realm:id:first:action:go> ,
+               <urn:resmud:realm:id:first:action:take> ,
+               <urn:resmud:realm:id:first:action:drop> ,
+               <urn:resmud:realm:id:first:action:verb> .
+
+<urn:resmud:realm:id:first:action:go>
+    rml:pattern "urn:resmud:verb:name:go" ;
+    rdfs:label "go <direction>: walk through an exit (north, south, east, west, up or down)" .
+
+<urn:resmud:realm:id:first:action:take>
+    rml:pattern "urn:resmud:verb:name:take" ;
+    rdfs:label "take <thing>: pick up a thing that is here" .
+
+<urn:resmud:realm:id:first:action:drop>
+    rml:pattern "urn:resmud:verb:name:drop" ;
+    rdfs:label "drop <thing>: put down a thing you carry" .
+
+<urn:resmud:realm:id:first:action:verb>
+    rml:pattern "urn:resmud:verb:id:{verb}" ;
+    rdfs:label "<verb> <thing>: run a verb a player wrote, such as polish" .

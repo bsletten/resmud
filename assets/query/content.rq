@@ -1,0 +1,14 @@
+# What a room holds that can be taken, as sentences.
+PREFIX rm:   <https://iriref.org/resmud/core#>
+PREFIX rms:  <https://iriref.org/resmud/space#>
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+SELECT ?subject (IF(COUNT(?item) = 0, "Nothing here can be taken.",
+                    GROUP_CONCAT(?entry; separator=" ")) AS ?line)
+WHERE {
+  OPTIONAL {
+    ?subject rms:contains ?item .
+    ?item a rm:Item ; rdfs:label ?label ; rm:description ?description .
+    BIND(CONCAT("You see the ", ?label, ". ", ?description) AS ?entry)
+  }
+}
+GROUP BY ?subject

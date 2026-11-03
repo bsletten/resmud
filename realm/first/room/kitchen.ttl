@@ -1,0 +1,12 @@
+@prefix rm:   <https://iriref.org/resmud/core#> .
+@prefix rms:  <https://iriref.org/resmud/space#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+
+<urn:resmud:room:id:kitchen> a rms:Room ;
+    rdfs:label "kitchen" ;
+    rm:description "A warm kitchen. Bread is cooling on the sill." ;
+    rms:exit <urn:resmud:room:id:kitchen:exit:bearing:east> .
+
+<urn:resmud:room:id:kitchen:exit:bearing:east> a rms:Exit ;
+    rms:bearing rms:east ;
+    rms:leadsTo <urn:resmud:room:id:garden> .

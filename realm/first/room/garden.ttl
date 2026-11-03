@@ -1,0 +1,12 @@
+@prefix rm:   <https://iriref.org/resmud/core#> .
+@prefix rms:  <https://iriref.org/resmud/space#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+
+<urn:resmud:room:id:garden> a rms:Room ;
+    rdfs:label "garden" ;
+    rm:description "A small walled garden. Mint grows between the stones." ;
+    rms:exit <urn:resmud:room:id:garden:exit:bearing:west> .
+
+<urn:resmud:room:id:garden:exit:bearing:west> a rms:Exit ;
+    rms:bearing rms:west ;
+    rms:leadsTo <urn:resmud:room:id:kitchen> .

@@ -1,0 +1,13 @@
+# What a character carries, as sentences.
+PREFIX rm:   <https://iriref.org/resmud/core#>
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+SELECT ?subject (IF(COUNT(?item) = 0, "You carry nothing.",
+                    GROUP_CONCAT(?entry; separator=" ")) AS ?line)
+WHERE {
+  OPTIONAL {
+    ?subject rm:carries ?item .
+    ?item rdfs:label ?label ; rm:description ?description .
+    BIND(CONCAT("You carry the ", ?label, ". ", ?description) AS ?entry)
+  }
+}
+GROUP BY ?subject

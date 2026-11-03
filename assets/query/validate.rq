@@ -1,0 +1,23 @@
+# The realm's shapes, checked against one candidate atom: one line per violation.
+# This answers the SHACL Core fragment the realm's shapes use (sh:targetClass, a
+# predicate sh:path, sh:minCount, sh:message); a shape using anything else is not
+# checked by it.
+PREFIX sh: <http://www.w3.org/ns/shacl#>
+SELECT ?line WHERE {
+  GRAPH <urn:resmud:candidate:shape> {
+    ?shape sh:targetClass ?class ; sh:property ?property .
+    ?property sh:path ?path ; sh:minCount ?min .
+    OPTIONAL { ?property sh:message ?message }
+  }
+  GRAPH <urn:resmud:candidate:data> { ?focus a ?class }
+  OPTIONAL {
+    SELECT ?focus ?path (COUNT(?value) AS ?count) WHERE {
+      GRAPH <urn:resmud:candidate:data> { ?focus ?path ?value }
+    }
+    GROUP BY ?focus ?path
+  }
+  FILTER(COALESCE(?count, 0) < ?min)
+  BIND(CONCAT(STR(?focus), " ", COALESCE(?message,
+       CONCAT("needs at least ", STR(?min), " ", STR(?path)))) AS ?line)
+}
+ORDER BY ?line

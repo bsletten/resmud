@@ -1,0 +1,8 @@
+# Where a room's exit on one bearing leads, as the destination's name.
+PREFIX rms: <https://iriref.org/resmud/space#>
+SELECT ?line ?subject ?bearing WHERE {
+  ?subject rms:exit ?exit .
+  ?exit rms:bearing ?bearing ; rms:leadsTo ?to .
+  BIND(STR(?to) AS ?line)
+}
+ORDER BY ?line

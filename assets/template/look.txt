@@ -1,0 +1,2 @@
+$r{urn:resmud:view:room:id:{room}}
+$r{urn:resmud:character:id:{character}:inventory}

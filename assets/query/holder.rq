@@ -1,0 +1,9 @@
+# Who or what holds a thing now: the room that contains it, or the character that
+# carries it, as a name.
+PREFIX rm:  <https://iriref.org/resmud/core#>
+PREFIX rms: <https://iriref.org/resmud/space#>
+SELECT ?line ?subject WHERE {
+  { ?holder rms:contains ?subject } UNION { ?holder rm:carries ?subject }
+  BIND(STR(?holder) AS ?line)
+}
+ORDER BY ?line

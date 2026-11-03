@@ -1,0 +1,22 @@
+# One atom, patched by a verb's plan: the atom's triples, less every (subject,
+# predicate) pair the plan sets, plus the plan's triples about this atom's subject. The
+# plan's placeholder <urn:resmud:argument:name:target> is the thing the verb was run on.
+# ?atom, ?plan and ?target are bound by the caller; the VALUES row only puts ?target in
+# scope, which a binding needs.
+CONSTRUCT { ?s ?p ?o } WHERE {
+  VALUES (?target) { (UNDEF) }
+  {
+    GRAPH ?atom { ?s ?p ?o }
+    FILTER NOT EXISTS {
+      GRAPH ?plan { ?planned ?p ?any }
+      FILTER(IF(?planned = <urn:resmud:argument:name:target>, ?target, ?planned) = ?s)
+    }
+  }
+  UNION
+  {
+    GRAPH ?plan { ?planned ?p ?value }
+    BIND(IF(?planned = <urn:resmud:argument:name:target>, ?target, ?planned) AS ?s)
+    BIND(IF(?value = <urn:resmud:argument:name:target>, ?target, ?value) AS ?o)
+    FILTER(?s = ?atom)
+  }
+}

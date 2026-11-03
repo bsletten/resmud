@@ -1,0 +1,6 @@
+# A thing's, room's or character's text description.
+PREFIX rm: <https://iriref.org/resmud/core#>
+SELECT ?line ?subject WHERE {
+  ?subject rm:description ?line .
+}
+ORDER BY ?line

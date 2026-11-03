@@ -1,0 +1,11 @@
+# One atom, with its subject moved: every triple of the atom except those that place the
+# subject somewhere, plus the one triple that places it with its new holder. ?atom,
+# ?subject, ?holder and ?how are bound by the caller; the VALUES row only puts the last
+# three in scope, which a binding needs.
+PREFIX rm:  <https://iriref.org/resmud/core#>
+PREFIX rms: <https://iriref.org/resmud/space#>
+CONSTRUCT { ?s ?p ?o . ?holder ?how ?subject } WHERE {
+  GRAPH ?atom { ?s ?p ?o }
+  FILTER(!((?p = rms:contains || ?p = rm:carries) && ?o = ?subject))
+  VALUES (?subject ?holder ?how) { (UNDEF UNDEF UNDEF) }
+}
