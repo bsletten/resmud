@@ -103,11 +103,11 @@ All published on ikigai-core 0.3: `ikigai-core`, `ikigai-fs` (the atoms are file
 `ikigai-sparql` with `ikigai-rdf` (queries and union), whose core 0.3 releases are in the current
 publish batch. The vocabulary is `resmud-vocab` (`rm:` and `rms:`).
 
-## Open questions
+## Decided (2026-11-03)
 
-- **The verb language.** This build compiles an s-expression to a graph patch through
-  `ikigai-sexpr`, which is on core 0.3 today. Steel (`ikigai-lisp`, where the builtins are the
-  kernel verbs) can follow once it moves to core 0.3; TypeScript and WebAssembly verbs after that.
-- **The first door.** The REPL first, or a line-protocol telnet door in this same build?
-- **Where the atoms live.** Files under a realm directory (`ikigai-fs`, golden-threaded by its
-  watcher) for this build; `ikigai-store` once it is on core 0.3, if a realm outgrows files.
+- **The verb language: s-expressions**, compiled to a graph patch through `ikigai-sexpr`, which is on
+  core 0.3 today. Steel (`ikigai-lisp`, where the builtins are the kernel verbs) can follow once it
+  moves to core 0.3; TypeScript and WebAssembly verbs after that.
+- **The first door: the `ikigai` REPL.** A line-protocol telnet door comes after this build.
+- **Where the atoms live: files under a realm directory**, through `ikigai-fs` and golden-threaded by
+  its watcher; `ikigai-store` once it is on core 0.3, if a realm outgrows files.
