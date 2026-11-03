@@ -196,9 +196,9 @@ Building it showed the first design was wrong, or silent, in six places:
 | writing an atom by its public name | **Unsupported** |
 | reading or writing the realm's files from outside it | **Unresolved** |
 
-Every row is tested in `tests/refusal.rs` or `tests/play.rs`, except two paths of the verb
-runner that have no test yet: a verb name that is not a name, and a plan that writes nothing. A
-refused request writes nothing.
+Every row is tested in `tests/refusal.rs` or `tests/play.rs`, including the verb runner's two
+quieter paths, a verb name that is not a name and a plan that writes nothing (PR 4). A refused
+request writes nothing.
 
 ## Done means
 
