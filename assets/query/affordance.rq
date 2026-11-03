@@ -1,0 +1,15 @@
+# What the caller can do here: the realm's allowed actions that the caller's own
+# capability-scoped manifold (urn:kernel:actions, Turtle face) offers. One line each.
+PREFIX rml:  <urn:resmud:term:name:>
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+PREFIX ik:   <https://ikigai-rs.dev/ns#>
+SELECT DISTINCT ?line ?subject WHERE {
+  ?subject rml:allows ?action .
+  ?action rml:pattern ?pattern ; rdfs:label ?line .
+  ?match a ik:ActionMatch .
+  { ?match ik:endpoint ?door . BIND(STR(?door) AS ?offered) }
+  UNION
+  { ?match ik:template ?offered }
+  FILTER(STR(?offered) = STR(?pattern))
+}
+ORDER BY ?line

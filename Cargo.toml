@@ -2,7 +2,9 @@
 name = "resmud"
 version = "0.1.0"
 edition = "2021"
-rust-version = "1.87"
+# 1.88, not the 1.87 the ikigai crates state: a fresh resolve takes sha2 0.11 (through oxrdf,
+# under ikigai-core), which needs 1.88. CI checks this floor with that toolchain.
+rust-version = "1.88"
 license = "MIT OR Apache-2.0"
 description = "ResMUD: shared, programmable worlds on ikigai. A world programmable from inside itself, where the selection funnel is the parser."
 repository = "https://github.com/bsletten/resmud"
@@ -10,5 +12,30 @@ publish = false
 
 [dependencies]
 # The kernel: ResMUD's names resolve through it. 0.3.0 is the release every module this game
-# builds on is published against (the scoped content store).
+# builds on is published against (the scoped content store), and the first with named
+# requests whose fixed arguments are reference templates.
 ikigai-core = "0.3.0"
+# The atoms are files under a realm directory, read through the cacheable mount so a write
+# through the kernel cuts exactly the file's golden thread.
+ikigai-fs = "0.4.0"
+# The verb language: a verb's source is a `(graph …)` s-expression, and its plan is the
+# source transrepted to Turtle by `urn:rdf:from-sexpr`.
+ikigai-sexpr = "0.4.0"
+# A verb's signature graph, checked by `urn:sign:verify`.
+ikigai-sign = "0.5.0"
+# The text templates, filled by `urn:iki:fn:compose`.
+ikigai-fn = "0.10.0"
+# Every question the game asks of the world: `urn:sparql:select` and `:construct` over the
+# atoms, with `bindings=` (0.5.0 is the core 0.3 release that carries it).
+ikigai-sparql = "0.5.0"
+# `urn:rdf:*`, mounted beside the others; the RDF hub every query and plan passes through.
+ikigai-rdf = "0.5.0"
+# The Meta renderer, so every endpoint's description answers as Turtle.
+ikigai-vocab = "0.3.0"
+# Reading a SELECT's results and writing a query's `bindings=`, as JSON.
+serde_json = "1.0.100"
+
+[dev-dependencies]
+futures = { version = "0.3.31", default-features = false, features = ["executor"] }
+tempfile = "3.10"
+base64 = "0.22"

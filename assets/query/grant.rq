@@ -1,0 +1,6 @@
+# The capability tokens an author's verbs may run under.
+PREFIX rml: <urn:resmud:term:name:>
+SELECT ?line ?subject WHERE {
+  ?subject rml:grant ?line .
+}
+ORDER BY ?line

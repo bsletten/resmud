@@ -1,0 +1,9 @@
+# Where a character is: the key of the room that contains it. A character's place is said
+# by its own atom, so this reads that atom alone.
+PREFIX rms: <https://iriref.org/resmud/space#>
+SELECT ?line ?subject WHERE {
+  ?room rms:contains ?subject .
+  FILTER(STRSTARTS(STR(?room), "urn:resmud:room:id:"))
+  BIND(STRAFTER(STR(?room), "urn:resmud:room:id:") AS ?line)
+}
+ORDER BY ?line

@@ -1,0 +1,4 @@
+urn:resmud:room:id:kitchen
+urn:resmud:room:id:garden
+urn:resmud:thing:id:lamp
+urn:resmud:character:id:alice

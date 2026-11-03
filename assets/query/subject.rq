@@ -1,0 +1,7 @@
+# The subjects a verb's plan writes, with its argument placeholder filled in: each one
+# names the atom the runner rewrites.
+SELECT DISTINCT ?line ?plan ?target WHERE {
+  GRAPH ?plan { ?written ?p ?o }
+  BIND(STR(IF(?written = <urn:resmud:argument:name:target>, ?target, ?written)) AS ?line)
+}
+ORDER BY ?line

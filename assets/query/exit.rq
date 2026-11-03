@@ -1,0 +1,12 @@
+# A room's exits, by bearing, as one sentence.
+PREFIX rms: <https://iriref.org/resmud/space#>
+SELECT ?subject (IF(COUNT(?bearing) = 0, "There is no way out.",
+                    CONCAT("Exits: ", GROUP_CONCAT(?name; separator=", "), ".")) AS ?line)
+WHERE {
+  OPTIONAL {
+    ?subject rms:exit ?exit .
+    ?exit rms:bearing ?bearing .
+    BIND(STRAFTER(STR(?bearing), "#") AS ?name)
+  }
+}
+GROUP BY ?subject
