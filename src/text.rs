@@ -44,7 +44,7 @@ fn served(
         let (_, body) = table
             .iter()
             .find(|(k, _)| *k == wanted)
-            .ok_or_else(|| Error::NotFound(format!("there is no {key} called `{wanted}`")))?;
+            .ok_or_else(|| Error::NotFound(format!("there is no stored {key} called {wanted}")))?;
         Ok(Representation::new(
             ReprType::new(media).with_param("charset", "utf-8"),
             body.as_bytes().to_vec(),

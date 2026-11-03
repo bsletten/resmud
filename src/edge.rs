@@ -18,6 +18,9 @@
 //! | `go` where there is no exit that way | `Conflict` |
 //! | `take` a thing that is not here, or does not exist | `Conflict` |
 //! | `drop` a thing the actor does not carry | `Conflict` |
+//!
+//! Every refusal names things by the word a player sees (`the lamp`, `the kitchen`), never
+//! by IRI; a door shows a player [`crate::refusal`] of it.
 
 use ikigai_core::{
     ActionSpec, ArgRef, ArgSpec, AsyncFnEndpoint, Description, Error, FailureClass, Invocation,
@@ -30,35 +33,49 @@ use crate::{character_iri, iri, is_key, CAP_PLAY, DIRECTIONS, SPACE_VOCABULARY, 
 
 const XSD_STRING: &str = "http://www.w3.org/2001/XMLSchema#string";
 
+/// The refusal for a caller who plays no character of this realm.
+const NOT_PLAYING: &str = "you are not playing a character in this realm, so you cannot act in it";
+
 /// The character the caller plays: its principal, which must be a character's name.
 pub(crate) fn actor(inv: &Invocation<'_>) -> Result<String> {
-    let principal = inv.capability.principal().ok_or_else(|| {
-        Error::Denied("you are not playing a character: the capability names no principal".into())
-    })?;
-    principal
-        .strip_prefix("urn:resmud:character:id:")
+    inv.capability
+        .principal()
+        .and_then(|principal| principal.strip_prefix("urn:resmud:character:id:"))
         .filter(|key| is_key(key))
         .map(str::to_string)
-        .ok_or_else(|| {
-            Error::Denied(format!(
-                "`{principal}` is not a character, so it cannot act in the world"
-            ))
-        })
+        .ok_or_else(|| Error::Denied(NOT_PLAYING.into()))
 }
 
-/// The key of the room `character` is in, read through its `:place` composition.
+/// The key of the room `character` is in, read through its `:place` composition. A
+/// character the realm has no atom for is not playing in it.
 pub(crate) async fn place(inv: &Invocation<'_>, character: &str) -> Result<String> {
-    let answer = inv
+    let answer = match inv
         .source(&iri(&format!("{}:place", character_iri(character))))
-        .await?;
+        .await
+    {
+        Ok(answer) => answer,
+        Err(Error::NotFound(_) | Error::Unresolved(_)) => {
+            return Err(Error::Denied(NOT_PLAYING.into()))
+        }
+        Err(e) => return Err(e),
+    };
     let room = String::from_utf8_lossy(&answer.bytes).trim().to_string();
     if is_key(&room) {
         Ok(room)
     } else {
-        Err(Error::Conflict(format!(
-            "you are nowhere: no room contains {}",
-            character_iri(character)
-        )))
+        Err(Error::Conflict(
+            "you are nowhere: no room in this realm holds you".into(),
+        ))
+    }
+}
+
+/// The refusal for `raw`, given where the name of a thing was wanted.
+pub(crate) fn not_a_thing(raw: &str) -> Error {
+    Error::InvalidArgument {
+        name: "content".into(),
+        detail: format!(
+            "\"{raw}\" is not the name of a thing: say it the way look shows it, such as lamp"
+        ),
     }
 }
 
@@ -68,13 +85,7 @@ fn thing_arg(inv: &Invocation<'_>) -> Result<String> {
     if is_key(raw) {
         Ok(raw.to_string())
     } else {
-        Err(Error::InvalidArgument {
-            name: "content".into(),
-            detail: format!(
-                "`{raw}` is not the name of a thing: use its key, such as `lamp` \
-                 (lowercase letters, digits and `-`)"
-            ),
-        })
+        Err(not_a_thing(raw))
     }
 }
 
@@ -150,7 +161,7 @@ pub fn go() -> AsyncFnEndpoint {
                 return Err(Error::InvalidArgument {
                     name: "content".into(),
                     detail: format!(
-                        "`{bearing}` is not a direction: say north, south, east, west, up or down"
+                        "\"{bearing}\" is not a direction: say north, south, east, west, up or down"
                     ),
                 });
             }
