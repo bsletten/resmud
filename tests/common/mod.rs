@@ -118,7 +118,7 @@ fn keys() -> Arc<dyn Space> {
 pub struct World {
     pub dir: tempfile::TempDir,
     pub realm: Realm,
-    pub kernel: Kernel,
+    pub kernel: Arc<Kernel>,
 }
 
 impl World {
@@ -132,7 +132,7 @@ impl World {
             &root,
         );
         let realm = Realm::new("first", &root).unwrap();
-        let kernel = resmud::kernel(&realm, vec![keys()]).unwrap();
+        let kernel = Arc::new(resmud::kernel(&realm, vec![keys()]).unwrap());
         let world = World { dir, realm, kernel };
         // Register the author's public key, derived from the private key by signing once.
         let graph = world.text(
@@ -281,5 +281,17 @@ impl World {
     /// A file of the realm, as text.
     pub fn file(&self, rel: &str) -> String {
         std::fs::read_to_string(self.root().join(rel)).unwrap()
+    }
+}
+
+impl World {
+    /// The door for alice: the `ikigai` REPL over this world's kernel, in her corridor.
+    pub fn door(&self) -> resmud::door::Door {
+        resmud::door::Door::new(Arc::clone(&self.kernel), &self.realm, "alice")
+    }
+
+    /// A door that resolves under `cap` in `scope`.
+    pub fn door_as(&self, cap: &Capability, scope: Scope) -> resmud::door::Door {
+        resmud::door::Door::with(Arc::clone(&self.kernel), cap.clone(), scope)
     }
 }

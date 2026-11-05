@@ -488,3 +488,34 @@ fn a_verb_that_writes_outside_the_realm_or_nothing_is_an_invalid_argument() {
     assert!(is(&refused, invalid), "{refused:?}");
     assert_eq!(said(&refused), "The verb idle changes nothing.");
 }
+
+#[test]
+fn a_blank_word_is_a_word_left_out() {
+    // The `ikigai` REPL sends a `sink` with nothing after its target as EMPTY content, never
+    // as none, so a blank `content` must read as the word left out, not as a word that is
+    // not a direction or a thing.
+    let w = World::new();
+    w.publish("polish", POLISH);
+    for target in [
+        "urn:resmud:verb:name:go",
+        "urn:resmud:verb:name:take",
+        "urn:resmud:verb:name:drop",
+        "urn:resmud:verb:id:polish",
+    ] {
+        for blank in ["", "  "] {
+            let request =
+                resmud::ikigai_core::Request::new(resmud::ikigai_core::Verb::Sink, iri(target))
+                    .with_arg(
+                        "content",
+                        resmud::ikigai_core::ArgRef::Inline(blank.as_bytes().to_vec()),
+                    );
+            let refused = w
+                .issue(request, &w.alice(), resmud::corridor("alice"))
+                .map(|_| String::new());
+            assert!(
+                matches!(refused, Err(Error::MissingArgument(ref name)) if name == "content"),
+                "{target} {blank:?}: {refused:?}"
+            );
+        }
+    }
+}

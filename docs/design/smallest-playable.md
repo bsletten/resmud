@@ -83,10 +83,27 @@ counted, because it lives in the personal corridor.
 manifold is always a list, so nothing is ever a hidden clickable. A Turtle face (`as=text/turtle`)
 for agents is not built yet.
 
-There is no door yet. The first client is meant to be the `ikigai` REPL (`source urn:resmud:look`),
-but it cannot host this build until `ikigai-engine` moves to ikigai-core 0.3. Until then the tests
-issue the same `source` and `sink` requests a REPL session would, through a helper that reads
-REPL-shaped lines.
+**The first door is the `ikigai` REPL** (`resmud::door`, ledger resmud#34): `ikigai-engine`
+0.3.0's `Engine` over the realm's kernel, opened for one player under their capability, sealed
+there, and with every request in their personal corridor. `cargo run --example door` plays the
+sample realm at a prompt. The door takes the words the affordance list and the refusals teach,
+and maps each, as text, to the REPL line that names an existing resource:
+
+| a player types | the door issues |
+|---|---|
+| `look` | `source urn:resmud:look` |
+| `help` or `what` | `source urn:resmud:affordance` |
+| `go east`, `take lamp`, `drop lamp` | `sink urn:resmud:verb:name:{go,take,drop} …` |
+| `polish lamp` (any other first word) | `sink urn:resmud:verb:id:polish lamp` |
+| `source …`, `sink …`, `exists …` | the line itself |
+| `quit` | leaves |
+
+It prints plain text only: a refusal is `resmud::refusal` of the kernel's typed error (the door's
+resolver keeps each line's first error, because the engine hands a frontend only its own message,
+which names resources by IRI), and an answer that is not plain, such as the Turtle of
+`urn:resmud:manifold`, is withheld with a sentence saying so. `tests/door.rs` replays the six steps
+of [Done means](#done-means) through the door with the same expected text; `tests/play.rs` still
+plays them against the kernel.
 
 ### Why each piece of code is code
 
@@ -125,6 +142,12 @@ REPL-shaped lines.
   uses anything else is not checked. The runner runs it over each candidate atom in a confined
   corridor that holds only the candidate and the shapes, so the check can read nothing else. When
   `ikigai-shacl` moves to core 0.3, the runner calls it instead and the query goes.
+
+- **The door** (`src/door.rs`): a host's face, which no name can be, because nothing in the
+  kernel reads a terminal. It is the engine plus two pieces. A word table maps a player's words
+  to REPL lines, as text, and adds no game logic. A resolver puts every request in the player's
+  corridor and keeps each line's first typed error, because the engine hands a frontend its own
+  message, never the error.
 
 Everything else is a name over a file, a query, a template or an alias.
 
@@ -192,18 +215,22 @@ Building it showed the first design was wrong, or silent, in six places:
 | a verb that would write a sealed name | **Denied** |
 | a thing created without a text description | **InvalidArgument** from the shapes (the accessibility floor) |
 | a verb whose source is not a `(graph …)`, or that writes nothing | **InvalidArgument** |
-| a verb that needs a thing and is given none | **MissingArgument** |
+| a verb that needs a thing and is given none, or a blank one | **MissingArgument** |
+| `go`, `take` or `drop` given no word, or a blank one | **MissingArgument** |
 | writing an atom by its public name | **Unsupported** |
 | reading or writing the realm's files from outside it | **Unresolved** |
 
 Every row is tested in `tests/refusal.rs` or `tests/play.rs`, including the verb runner's two
 quieter paths, a verb name that is not a name and a plan that writes nothing (PR 4). A refused
-request writes nothing.
+request writes nothing. A blank word counts as a word left out because the `ikigai` REPL sends a
+`sink` with nothing after its target as empty content, never as none.
 
 ## Done means
 
 One test plays this through, on the text face (`tests/play.rs`,
-`the_smallest_playable_thing_plays_through_on_the_text_face`), and it passes:
+`the_smallest_playable_thing_plays_through_on_the_text_face`), and it passes. A second plays the
+same steps as the words a player types at the door, with the same expected text (`tests/door.rs`,
+`the_smallest_playable_thing_plays_through_the_door`):
 
 1. `look` lists the room's description, its exits, and the lamp.
 2. `take lamp`; `look` again: the lamp is gone from the room's text, and the character carries it.
@@ -218,15 +245,16 @@ One test plays this through, on the text face (`tests/play.rs`,
 
 All published on ikigai-core 0.3: `ikigai-core` 0.3.0, `ikigai-fs` 0.4.0 (the atoms are files),
 `ikigai-sexpr` 0.4.0 (the verb language), `ikigai-sign` 0.5.0 (signatures), `ikigai-fn` 0.10.0 (the
-templates), `ikigai-sparql` 0.5.0 and `ikigai-rdf` 0.5.0 (the queries and the union), and
-`ikigai-vocab` 0.3.0. The vocabulary is `resmud-vocab` (`rm:` and `rms:`).
+templates), `ikigai-sparql` 0.5.0 and `ikigai-rdf` 0.5.0 (the queries and the union),
+`ikigai-vocab` 0.3.0, and `ikigai-engine` 0.3.0 with `ikigai-resolve` 0.3.0 (the door). The vocabulary is `resmud-vocab` (`rm:` and `rms:`).
 
 ## Decided (2026-11-03)
 
 - **The verb language: s-expressions**, compiled to a graph patch through `ikigai-sexpr`, which is on
   core 0.3 today. Steel (`ikigai-lisp`, where the builtins are the kernel verbs) can follow once it
   moves to core 0.3; TypeScript and WebAssembly verbs after that.
-- **The first door: the `ikigai` REPL.** A line-protocol telnet door comes after this build.
+- **The first door: the `ikigai` REPL.** Built (above). A line-protocol telnet door comes after
+  this build.
 - **Where the atoms live: files under a realm directory**, through `ikigai-fs` and golden-threaded by
   its watcher; `ikigai-store` once it is on core 0.3, if a realm outgrows files.
 

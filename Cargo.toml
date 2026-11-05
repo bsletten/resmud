@@ -2,9 +2,10 @@
 name = "resmud"
 version = "0.1.0"
 edition = "2021"
-# 1.88, not the 1.87 the ikigai crates state: a fresh resolve takes sha2 0.11 (through oxrdf,
-# under ikigai-core), which needs 1.88. CI checks this floor with that toolchain.
-rust-version = "1.88"
+# 1.89: `ikigai-engine` 0.3.0 and `ikigai-resolve` 0.3.0 (the door) state 1.89, the first
+# toolchain that builds their workspace. Before the door it was 1.88, for sha2 0.11 (through
+# oxrdf, under ikigai-core). CI checks this floor with that toolchain.
+rust-version = "1.89"
 license = "MIT OR Apache-2.0"
 description = "ResMUD: shared, programmable worlds on ikigai. A world programmable from inside itself, where the selection funnel is the parser."
 repository = "https://github.com/bsletten/resmud"
@@ -34,8 +35,21 @@ ikigai-rdf = "0.5.0"
 ikigai-vocab = "0.3.0"
 # Reading a SELECT's results and writing a query's `bindings=`, as JSON.
 serde_json = "1.0.100"
+# The first door (`resmud::door`): the ikigai REPL's grammar over the realm's kernel. A
+# normal dependency, not a feature, because the door ships in the library for any host to
+# call. 0.3.0 is the first release on ikigai-core 0.3, so it is the floor; under Cargo's 0.x
+# rules `^0.3.0` is also a ceiling below 0.4.0.
+ikigai-engine = "0.3.0"
+# The `Resolver` trait the engine drives a kernel through, which the door implements to put
+# every request in the player's corridor. The engine's own release line, so the two
+# resolve together.
+ikigai-resolve = "0.3.0"
+# `Resolver` is an `#[async_trait]` trait, so implementing it needs the macro.
+async-trait = "0.1"
+# `block_on` for the resolver's one synchronous issue path (the engine itself drives the
+# async ones). Already in the graph through the engine.
+futures = { version = "0.3.31", default-features = false, features = ["executor"] }
 
 [dev-dependencies]
-futures = { version = "0.3.31", default-features = false, features = ["executor"] }
 tempfile = "3.10"
 base64 = "0.22"
