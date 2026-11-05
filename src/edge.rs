@@ -13,6 +13,7 @@
 //! | case | error |
 //! |---|---|
 //! | a caller with no character (no principal) | `Denied` |
+//! | no direction or thing given, or a blank one | `MissingArgument` |
 //! | `go` a bearing that is not a direction | `InvalidArgument` |
 //! | `take`/`drop` a thing whose name is not a key | `InvalidArgument` |
 //! | `go` where there is no exit that way | `Conflict` |
@@ -79,9 +80,21 @@ pub(crate) fn not_a_thing(raw: &str) -> Error {
     }
 }
 
+/// The content argument, trimmed. A blank one is a word left out (`MissingArgument`), as an
+/// absent one is: the `ikigai` REPL sends a `sink` with nothing after its target as EMPTY
+/// content, never as none, so `go` alone at the door reaches an edge as `content=""`.
+pub(crate) fn word<'a>(inv: &'a Invocation<'_>) -> Result<&'a str> {
+    let raw = inv.inline_str("content")?.trim();
+    if raw.is_empty() {
+        Err(Error::MissingArgument("content".into()))
+    } else {
+        Ok(raw)
+    }
+}
+
 /// The content argument as a key (a thing's name), or `InvalidArgument` saying why not.
 fn thing_arg(inv: &Invocation<'_>) -> Result<String> {
-    let raw = inv.inline_str("content")?.trim();
+    let raw = word(inv)?;
     if is_key(raw) {
         Ok(raw.to_string())
     } else {
@@ -156,7 +169,7 @@ pub fn go() -> AsyncFnEndpoint {
     AsyncFnEndpoint::new("resmud-go", |inv| {
         Box::pin(async move {
             let me = actor(inv)?;
-            let bearing = inv.inline_str("content")?.trim().to_string();
+            let bearing = word(inv)?.to_string();
             if !DIRECTIONS.contains(&bearing.as_str()) {
                 return Err(Error::InvalidArgument {
                     name: "content".into(),

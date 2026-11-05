@@ -226,9 +226,12 @@ pub fn runner(realm: Realm) -> AsyncFnEndpoint {
                     ),
                 });
             }
-            let target = match inv.inline_str("content") {
-                Ok(raw) if is_key(raw.trim()) => format!("urn:resmud:thing:id:{}", raw.trim()),
-                Ok(raw) => return Err(crate::edge::not_a_thing(raw.trim())),
+            // No thing given, or a blank one (the REPL's `sink` with nothing after its
+            // target sends empty content): the target stays unbound, and a plan that names
+            // it is refused as missing a word.
+            let target = match crate::edge::word(inv) {
+                Ok(raw) if is_key(raw) => format!("urn:resmud:thing:id:{raw}"),
+                Ok(raw) => return Err(crate::edge::not_a_thing(raw)),
                 Err(Error::MissingArgument(_)) => TARGET.to_string(),
                 Err(e) => return Err(e),
             };

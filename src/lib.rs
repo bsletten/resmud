@@ -13,12 +13,16 @@
 //!   and answers its `?line` column as plain text. It is code because a named request cannot
 //!   carry a SPARQL binding (see its docs); the map as built says so;
 //! - [`refusal`]: what a player reads when a request is refused, one plain sentence, mapped
-//!   at the edge because some refusals are the kernel's own and name resources by IRI.
+//!   at the edge because some refusals are the kernel's own and name resources by IRI;
+//! - [`door`]: the first door, the `ikigai` REPL (`ikigai-engine`) opened for one player, which
+//!   maps the player's words (`look`, `go east`, `polish lamp`) to REPL lines and shows every
+//!   refusal as [`refusal`] of it.
 //!
 //! Every ResMUD name lives under [`NAMESPACE`], and resolves through an [`ikigai_core`]
 //! kernel built by [`kernel`].
 #![forbid(unsafe_code)]
 
+pub mod door;
 pub mod edge;
 mod plain;
 pub mod query;
