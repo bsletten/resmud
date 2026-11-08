@@ -232,14 +232,11 @@ fn the_door_shows_a_refusal_never_the_error() {
             "That needs one more word: a direction to go, or the thing to take, drop or run a \
              verb on, such as take lamp.",
         ),
-        // A first word the door does not know is a verb a player wrote. ⚠ A verb nobody
-        // published reads as one that names no author (the runner reads the author first),
-        // which says nothing about a typo: a known limitation, in ACCESSIBILITY.md.
-        (
-            "dance",
-            "The verb dance names no author, so its signature cannot be checked: its author \
-             can publish it again with their name.",
-        ),
+        // A first word the door does not know is a verb a player wrote, and a verb nobody
+        // published is refused as one, before its author or its thing is read.
+        ("dance", "There is no verb called dance."),
+        ("dance lamp", "There is no verb called dance."),
+        ("dance Lamp", "There is no verb called dance."),
         (
             "Polish lamp",
             "\"Polish\" is not the name of a verb: say it the way its author published it, \

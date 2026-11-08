@@ -210,6 +210,7 @@ Building it showed the first design was wrong, or silent, in six places:
 | a direction, thing or verb that is not a name | **InvalidArgument** |
 | a caller who plays no character, or a principal that is not a character | **Denied** |
 | a move or a verb without `urn:cap:resmud:play` or `urn:cap:resmud:verb:run` | **Denied**, by the declared capability floor |
+| a verb nobody published (`dance`), checked before its author or its thing | **NotFound**: "There is no verb called dance." |
 | a verb whose signature fails, or that names no author or an unknown one | **Denied** |
 | a verb that writes what its author's grant and its caller's capability together do not cover | **Denied** |
 | a verb that would write a sealed name | **Denied** |

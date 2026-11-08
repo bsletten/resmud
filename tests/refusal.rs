@@ -275,6 +275,27 @@ fn a_verb_signed_by_someone_other_than_its_author_is_denied() {
 const NOT_SIGNED: &str = "The verb polish is not what alice signed, so it does not run: it was \
                           changed after it was signed, or someone else signed it.";
 
+fn not_found(e: &Error) -> bool {
+    matches!(e, Error::NotFound(_))
+}
+
+#[test]
+fn a_verb_nobody_published_is_not_found_before_its_author_or_thing_is_read() {
+    let w = World::new();
+    for line in [
+        "sink urn:resmud:verb:id:dance",
+        "sink urn:resmud:verb:id:dance lamp",
+        // The thing's name is not checked first: there is no verb to run on it.
+        "sink urn:resmud:verb:id:dance Lamp",
+    ] {
+        let refused = w.play(line);
+        assert!(is(&refused, not_found), "{line}: {refused:?}");
+        assert_eq!(said(&refused), "There is no verb called dance.", "{line}");
+    }
+    // A verb whose source is published but whose author is not still reaches the author
+    // check (the next test), so the existence check reads the source alone.
+}
+
 #[test]
 fn a_verb_that_names_no_author_or_an_unknown_one_is_denied() {
     let w = World::new();

@@ -11,7 +11,7 @@ conformance claim. Adapted from the [ACCESSIBILITY.md template](https://github.c
 | Status | Evaluation in progress. No conformance claim. |
 | Owner | the maintainers of this repository |
 | Report a barrier | [a GitHub issue](https://github.com/bsletten/resmud/issues/new?labels=accessibility) with the `accessibility` label; anything security-sensitive through [private vulnerability reporting](https://github.com/bsletten/resmud/security/advisories/new) |
-| Last reviewed | 2026-11-04 |
+| Last reviewed | 2026-11-07 |
 
 ## What it emits that people read
 
@@ -73,6 +73,11 @@ What the build now holds, and how:
   may.`). Every refusal ends as a sentence: a capital letter and a period. `tests/refusal.rs` pins
   the exact sentence of every refusal it reaches, and checks each is plain;
   `src/plain.rs` checks that every kind of kernel error maps to a plain sentence.
+- **A word that names no verb is told so.** The door reads any first word it does not know as a
+  verb a player wrote, and the verb runner checks that the verb was published before it reads
+  anything else, so a typo is refused in plain words (`There is no verb called dance.`), not with
+  a sentence about the verb's author or the thing it was given (`tests/door.rs`,
+  `tests/refusal.rs`, `a_verb_nobody_published_is_not_found_before_its_author_or_thing_is_read`).
 - **The door prints plain text and nothing else.** A refusal at the door is
   `resmud::refusal` of the kernel's typed error, never the engine's message (which names
   resources by IRI): the door keeps each line's first error for exactly this. A line the engine
@@ -112,10 +117,6 @@ What the build now holds, and how:
   not say them.** A refusal still says "ask what you can do here", which a player has to
   connect to the word. A visitor offered nothing gets an empty answer, which the door prints as an
   empty line rather than a sentence.
-- **A word the realm has no verb for gets the wrong sentence.** The door reads any first word it
-  does not know as a verb a player wrote, and the verb runner reads a verb's author before
-  anything else, so a typo (`dance`) is told that the verb "names no author", not that there is no
-  such verb.
 - **The door's words are exact.** `Look` and `LOOK` are not `look`, and `look lamp` is refused
   (`Say look on its own.`) rather than describing the lamp.
 - **The REPL's grammar at the door can narrow a session.** `sink urn:host:login …` (the engine's
@@ -155,3 +156,4 @@ technology, if you are comfortable sharing them. Anything security-sensitive goe
 | 2026-11-03 | The first playable build: what its text face emits, the rules it now holds and how they are tested. |
 | 2026-11-03 | Refusals in plain words, mapped at the edge by `resmud::refusal`; no angle brackets in the affordance list. |
 | 2026-11-04 | The first door, the `ikigai` REPL (`resmud::door`): its words, `help` and `what` for what you can do here, a refusal shown as `resmud::refusal` and never the error, and only plain text printed. |
+| 2026-11-07 | A word that names no verb is refused as such (`There is no verb called dance.`), before the verb's author is read (resmud#53). |

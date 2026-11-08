@@ -4,6 +4,8 @@
 //! patch, and every step can refuse. Each step exists already, and the runner only joins
 //! them, in this order, refusing before anything is written:
 //!
+//! 0. **The verb**: its source (`…:source`) must exist. A verb nobody published is
+//!    `NotFound` ("there is no verb called dance"), before its author or its thing is read.
 //! 1. **The signature** (`urn:sign:verify`): the verb's source (`…:source`) against its
 //!    signature graph (`…:signature`) and the key of the author it names (`…:author`), the
 //!    one the realm registered (`urn:resmud:author:id:{author}:key`). Anything but `valid` is
@@ -116,6 +118,25 @@ async fn read_text(inv: &Invocation<'_>, name: &str) -> Result<String> {
     Ok(String::from_utf8_lossy(&answer.bytes).trim().to_string())
 }
 
+/// Step 0: whether verb `verb` was published, which is whether its source exists. A verb
+/// nobody published is `NotFound`, in words.
+async fn published(inv: &Invocation<'_>, verb: &str) -> Result<()> {
+    let source = iri(&format!("urn:resmud:verb:id:{verb}:source"));
+    let exists = inv
+        .issue(Request::new(Verb::Exists, source))
+        .await
+        .map(|answer| answer.bytes == b"true")
+        .or_else(|e| match e {
+            Error::NotFound(_) | Error::Unresolved(_) => Ok(false),
+            e => Err(e),
+        })?;
+    if exists {
+        Ok(())
+    } else {
+        Err(Error::NotFound(format!("there is no verb called {verb}")))
+    }
+}
+
 /// Step 1: verify the verb's signature against its author's registered key, and answer the
 /// author's key.
 async fn verify(inv: &Invocation<'_>, verb: &str) -> Result<String> {
@@ -226,6 +247,9 @@ pub fn runner(realm: Realm) -> AsyncFnEndpoint {
                     ),
                 });
             }
+            // 0. The verb: one nobody published is refused as such, before its author or the
+            //    thing it would run on is read, so a typo is told there is no such verb.
+            published(inv, &verb).await?;
             // No thing given, or a blank one (the REPL's `sink` with nothing after its
             // target sends empty content): the target stays unbound, and a plan that names
             // it is refused as missing a word.
