@@ -135,8 +135,9 @@ always there, and a portal can only be more specific within the destination's ow
   look. A crossing is as cheap as any `go`.
 - **What a portal edit recomputes:** the faces of things from its source realm, in its destination
   realm, and nothing else.
-- The open caching cost in `smallest-playable.md` (contents over the whole world) is unchanged by
-  this build and not addressed here.
+- The caching cost of a move in `smallest-playable.md` is decided there (option 1, resmud#52):
+  a room's contents and a character's carried things are atoms of their own, so a crossing that
+  carries things writes only the traveler's atom, as `go` does.
 
 ## Refusals
 

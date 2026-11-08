@@ -9,7 +9,15 @@ const XSD_STRING: &str = "http://www.w3.org/2001/XMLSchema#string";
 /// Every stored query, by the key it is named under: `urn:resmud:query:id:{query}`.
 pub const QUERIES: &[(&str, &str)] = &[
     ("affordance", include_str!("../assets/query/affordance.rq")),
+    (
+        "carries-graph",
+        include_str!("../assets/query/carries-graph.rq"),
+    ),
     ("content", include_str!("../assets/query/content.rq")),
+    (
+        "content-graph",
+        include_str!("../assets/query/content-graph.rq"),
+    ),
     (
         "description",
         include_str!("../assets/query/description.rq"),
@@ -17,11 +25,17 @@ pub const QUERIES: &[(&str, &str)] = &[
     ("exit", include_str!("../assets/query/exit.rq")),
     ("exit-to", include_str!("../assets/query/exit-to.rq")),
     ("grant", include_str!("../assets/query/grant.rq")),
-    ("holder", include_str!("../assets/query/holder.rq")),
+    ("holds", include_str!("../assets/query/holds.rq")),
     ("inventory", include_str!("../assets/query/inventory.rq")),
     ("patch", include_str!("../assets/query/patch.rq")),
+    (
+        "patch-holding",
+        include_str!("../assets/query/patch-holding.rq"),
+    ),
     ("place", include_str!("../assets/query/place.rq")),
+    ("put", include_str!("../assets/query/put.rq")),
     ("relocate", include_str!("../assets/query/relocate.rq")),
+    ("remove", include_str!("../assets/query/remove.rq")),
     ("subject", include_str!("../assets/query/subject.rq")),
     ("validate", include_str!("../assets/query/validate.rq")),
 ];

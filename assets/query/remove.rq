@@ -1,0 +1,8 @@
+# One atom of what something holds, with one thing taken out of it: every triple of the
+# atom except ?holder ?how ?thing. ?atom, ?holder, ?how and ?thing are bound by the caller;
+# the VALUES row only puts the last three in scope, which a binding needs.
+CONSTRUCT { ?s ?p ?o } WHERE {
+  VALUES (?holder ?how ?thing) { (UNDEF UNDEF UNDEF) }
+  GRAPH ?atom { ?s ?p ?o }
+  FILTER(!(?s = ?holder && ?p = ?how && ?o = ?thing))
+}

@@ -1,0 +1,18 @@
+# One atom of what something holds (a room's contents, a character's carried things),
+# patched by a verb's plan: the atom's triples, plus the plan's triples that place a thing
+# with ?holder by ?how. Nothing is taken out: a verb can put a thing somewhere, such as a
+# thing it creates, and moving one out of a room stays the moves' job. The plan's
+# placeholder <urn:resmud:argument:name:target> is the thing the verb was run on.
+# ?atom, ?holder, ?how, ?plan and ?target are bound by the caller; the VALUES row only puts
+# the bound names in scope, which a binding needs.
+CONSTRUCT { ?s ?p ?o } WHERE {
+  VALUES (?holder ?how ?target) { (UNDEF UNDEF UNDEF) }
+  { GRAPH ?atom { ?s ?p ?o } }
+  UNION
+  {
+    GRAPH ?plan { ?planned ?p ?value }
+    BIND(IF(?planned = <urn:resmud:argument:name:target>, ?target, ?planned) AS ?s)
+    BIND(IF(?value = <urn:resmud:argument:name:target>, ?target, ?value) AS ?o)
+    FILTER(?s = ?holder && ?p = ?how && STRSTARTS(STR(?o), "urn:resmud:thing:id:"))
+  }
+}

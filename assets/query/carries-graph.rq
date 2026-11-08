@@ -1,0 +1,15 @@
+# The graphs a character's inventory reads, one name per line: the character's carries
+# atom, and the atom of each thing it lists (for the thing's label and description). Run over
+# the carries atom alone, so an inventory hangs from that atom and the atoms of the things in
+# it, never from the world.
+PREFIX rm: <https://iriref.org/resmud/core#>
+SELECT ?line ?subject WHERE {
+  { BIND(CONCAT(STR(?subject), ":carries") AS ?line) }
+  UNION
+  {
+    ?subject rm:carries ?thing .
+    FILTER(STRSTARTS(STR(?thing), "urn:resmud:thing:id:"))
+    BIND(STR(?thing) AS ?line)
+  }
+}
+ORDER BY ?line

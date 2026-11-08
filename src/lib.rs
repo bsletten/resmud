@@ -6,7 +6,8 @@
 //! template, an alias or `urn:kernel:actions`. Code exists only where a composition cannot say
 //! *no*:
 //!
-//! - [`edge`]: `go`, `take` and `drop`, each of which rewrites one atom or refuses;
+//! - [`edge`]: `go`, `take` and `drop`, each of which rewrites the atoms a move touches (one
+//!   for `go`, two for `take` and `drop`) or refuses;
 //! - [`runner`]: the verb runner, which checks a verb's signature, clamps it to its author's
 //!   grant, validates the patch against the realm's shapes and writes it;
 //! - [`query`]: one adapter, `urn:resmud:query`, that binds a NAME into a stored SPARQL query
@@ -77,17 +78,22 @@ pub const CAP_PLAY: &str = "urn:cap:resmud:play";
 pub const CAP_VERB_RUN: &str = "urn:cap:resmud:verb:run";
 
 /// The prefix of the grant tokens an author's verbs run under: `urn:cap:resmud:write:thing`
-/// lets a verb rewrite things, and so on for `character` and `room`.
+/// lets a verb rewrite things, and so on for each of [`WRITABLE_KINDS`]:
+/// `urn:cap:resmud:write:content` lets it put a thing in a room (a room's contents atom)
+/// without letting it rewrite the room itself.
 pub const CAP_WRITE_PREFIX: &str = "urn:cap:resmud:write:";
 
 /// The placeholder a verb's plan names the thing it is run on by: the runner fills it with
 /// `urn:resmud:thing:id:{content}`.
 pub const TARGET: &str = "urn:resmud:argument:name:target";
 
-/// The kinds of atom a move or a verb may rewrite. Everything under `urn:resmud:realm:` and
-/// `urn:resmud:author:` is sealed: changing what may exist, or who may write, is legislation,
-/// not play.
-pub const WRITABLE_KINDS: [&str; 3] = ["thing", "character", "room"];
+/// The kinds of atom a move or a verb may rewrite, each the name of the directory its files
+/// live in: a thing, a character and a room (`thing/lamp.ttl`), a room's contents
+/// (`content/kitchen.ttl`, named `urn:resmud:room:id:kitchen:content`) and what a character
+/// carries (`carries/alice.ttl`, named `urn:resmud:character:id:alice:carries`). Everything
+/// under `urn:resmud:realm:` and `urn:resmud:author:` is sealed: changing what may exist, or
+/// who may write, is legislation, not play.
+pub const WRITABLE_KINDS: [&str; 5] = ["thing", "character", "room", "content", "carries"];
 
 /// One hosted realm: its key (`first`), and the directory its atoms live in.
 #[derive(Clone, Debug)]
@@ -189,7 +195,8 @@ fn template(s: &str) -> UriTemplate {
 /// The realm's resource map: every name the design lists, as an alias table.
 ///
 /// - **Atoms** are files, each reached by a Source-only view, so no caller can write an atom
-///   by its public name: `urn:resmud:room:id:{room}` reads `room/{room}.ttl`.
+///   by its public name: `urn:resmud:room:id:{room}` reads `room/{room}.ttl`, and what the
+///   room contains, `urn:resmud:room:id:{room}:content`, reads `content/{room}.ttl`.
 /// - **Verb sources** (`:source`, `:signature`, `:author`) forward every verb, so a player
 ///   publishes a verb by writing them; nothing else about a verb is writable.
 /// - **Compositions** are named requests onto `urn:resmud:query` (a stored query with one name
@@ -198,8 +205,9 @@ fn template(s: &str) -> UriTemplate {
 pub fn resource_map(realm: &Realm) -> Result<AliasTable, DeclarationError> {
     let view = |from: &str, to: &str| TopologyRule::named_template(from, to).verb(Verb::Source);
     let file = |from: &str, to: &str| TopologyRule::named_request(from, to).verb(Verb::Source);
-    // A question about the whole world reads every atom the world lists; a question about
-    // one atom reads only that atom, so it hangs from that atom's thread alone.
+    // A question about one atom reads only that atom, so it hangs from that atom's thread
+    // alone; no question the game asks reads the whole world, so a move cuts only the threads
+    // of the atoms it rewrote.
     let ask = |from: &str, name: &str, subject: &str| {
         TopologyRule::named_template(from, "urn:resmud:query")
             .verb(Verb::Source)
@@ -212,12 +220,18 @@ pub fn resource_map(realm: &Realm) -> Result<AliasTable, DeclarationError> {
                 template(subject),
             ))
     };
-    let query = |from: &str, name: &str, subject: &str| {
-        ask(from, name, subject).fixing(FixedArgument::reference("graph", iri("urn:resmud:world")))
-    };
     let query_atom = |from: &str, name: &str, subject: &str| {
         ask(from, name, subject)
             .fixing(FixedArgument::reference_template("atom", template(subject)))
+    };
+    // A question about one atom that is not the subject's own (a room's contents atom).
+    let query_in = |from: &str, name: &str, subject: &str, atom: &str| {
+        ask(from, name, subject).fixing(FixedArgument::reference_template("atom", template(atom)))
+    };
+    // A question over a list of graphs that another composition answers.
+    let query_over = |from: &str, name: &str, subject: &str, graphs: &str| {
+        ask(from, name, subject)
+            .fixing(FixedArgument::reference_template("graph", template(graphs)))
     };
     let rules = [
         // The atoms.
@@ -229,6 +243,16 @@ pub fn resource_map(realm: &Realm) -> Result<AliasTable, DeclarationError> {
         view(
             "urn:resmud:character:id:{character}",
             "urn:file:character/{character}.ttl",
+        ),
+        // Where things are: what each room contains, and what each character carries, each
+        // an atom of its own, so a move rewrites only the two it touches.
+        view(
+            "urn:resmud:room:id:{room}:content",
+            "urn:file:content/{room}.ttl",
+        ),
+        view(
+            "urn:resmud:character:id:{character}:carries",
+            "urn:file:carries/{character}.ttl",
         ),
         view(
             "urn:resmud:author:id:{author}",
@@ -264,20 +288,38 @@ pub fn resource_map(realm: &Realm) -> Result<AliasTable, DeclarationError> {
             "place",
             "urn:resmud:character:id:{character}",
         ),
-        query(
+        // What a character carries: the carries atom and the atoms of the things it lists,
+        // never the world.
+        query_in(
+            "urn:resmud:character:id:{character}:carries:graph",
+            "carries-graph",
+            "urn:resmud:character:id:{character}",
+            "urn:resmud:character:id:{character}:carries",
+        ),
+        query_over(
             "urn:resmud:character:id:{character}:inventory",
             "inventory",
             "urn:resmud:character:id:{character}",
+            "urn:resmud:character:id:{character}:carries:graph",
         ),
         query_atom(
             "urn:resmud:room:id:{room}:description",
             "description",
             "urn:resmud:room:id:{room}",
         ),
-        query(
+        // What a room holds: the contents atom and the atoms of the things it lists, never
+        // the world.
+        query_in(
+            "urn:resmud:room:id:{room}:content:graph",
+            "content-graph",
+            "urn:resmud:room:id:{room}",
             "urn:resmud:room:id:{room}:content",
+        ),
+        query_over(
+            "urn:resmud:room:id:{room}:content:line",
             "content",
             "urn:resmud:room:id:{room}",
+            "urn:resmud:room:id:{room}:content:graph",
         ),
         query_atom(
             "urn:resmud:room:id:{room}:exit",

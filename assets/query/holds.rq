@@ -1,0 +1,7 @@
+# Whether one atom of what something holds says that ?subject holds ?thing by ?how: one
+# line when it does, none when it does not. ?subject, ?how and ?thing are bound by the
+# caller, and the graph is that one atom, so this reads nothing else.
+SELECT ?line ?subject ?how ?thing WHERE {
+  ?subject ?how ?thing .
+  BIND("held" AS ?line)
+}

@@ -1,5 +1,6 @@
 # One atom, with its subject moved: every triple of the atom except those that place the
-# subject somewhere, plus the one triple that places it with its new holder. ?atom,
+# subject somewhere, plus the one triple that places it with its new holder. `go` uses it on
+# the mover's own atom, where a character's place is said. ?atom,
 # ?subject, ?holder and ?how are bound by the caller; the VALUES row only puts the last
 # three in scope, which a binding needs.
 PREFIX rm:  <https://iriref.org/resmud/core#>

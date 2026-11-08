@@ -28,9 +28,11 @@ fn the_smallest_playable_thing_plays_through_on_the_text_face() {
 
     // 2. `take lamp`; `look` again: the lamp is gone from the room's text, and the
     //    character carries it. The room text was recomputed because its thread was cut,
-    //    not because anything rewrote it: the room's own atom is byte-for-byte unchanged,
-    //    and only the lamp's atom was written.
+    //    not because anything rewrote it: the room's own atom and the lamp's are
+    //    byte-for-byte unchanged, and only the kitchen's contents and what alice carries
+    //    were written.
     let kitchen_before = w.file("room/kitchen.ttl");
+    let lamp_before = w.file("thing/lamp.ttl");
     assert_eq!(
         w.play("sink urn:resmud:verb:name:take lamp").unwrap(),
         "You take the lamp."
@@ -41,7 +43,13 @@ fn the_smallest_playable_thing_plays_through_on_the_text_face() {
         kitchen_before,
         "nothing rewrote the room"
     );
-    assert!(w.file("thing/lamp.ttl").contains("core#carries"));
+    assert_eq!(
+        w.file("thing/lamp.ttl"),
+        lamp_before,
+        "nothing rewrote the lamp"
+    );
+    assert!(w.file("carries/alice.ttl").contains("thing:id:lamp"));
+    assert!(!w.file("content/kitchen.ttl").contains("thing:id:lamp"));
     let look = w.play("source urn:resmud:look").unwrap();
     assert_eq!(
         look,
@@ -235,24 +243,59 @@ fn a_verb_can_create_a_thing_that_has_a_description() {
             .unwrap(),
         "A smooth grey pebble."
     );
-    // A plan rewrites atoms by SUBJECT, and a thing's place is said in its own atom with
-    // the room as subject, so a plan cannot place what it creates: that triple names the
-    // room's atom, which alice's grant does not cover.
+    // It is nowhere: nothing placed it, so no room lists it.
+    assert!(!w.play("source urn:resmud:look").unwrap().contains("pebble"));
+}
+
+#[test]
+fn a_verb_can_create_a_thing_and_place_it_here() {
+    let w = World::new();
+    let kitchen = w.file("room/kitchen.ttl");
+    // A triple that places a thing writes the room's CONTENTS atom, not the room's own, so
+    // alice's grant (things, and what a room contains) covers it without covering the room.
     w.publish(
         "conjure-here",
         r#"(graph
-  (prefix (rms "https://iriref.org/resmud/space#"))
+  (prefix (rm "https://iriref.org/resmud/core#") (rms "https://iriref.org/resmud/space#")
+          (rdfs "http://www.w3.org/2000/01/rdf-schema#"))
+  ((iri "urn:resmud:thing:id:pebble") a rm:Item)
+  ((iri "urn:resmud:thing:id:pebble") rdfs:label "pebble")
+  ((iri "urn:resmud:thing:id:pebble") rm:description "A smooth grey pebble.")
   ((iri "urn:resmud:room:id:kitchen") rms:contains (iri "urn:resmud:thing:id:pebble")))"#,
     );
-    let refused = w.play("sink urn:resmud:verb:id:conjure-here");
+    assert_eq!(
+        w.play("sink urn:resmud:verb:id:conjure-here").unwrap(),
+        "You conjure-here."
+    );
+    // The room lists both things (in no promised order: the contents line does not sort).
+    let look = w.play("source urn:resmud:look").unwrap();
+    let lines: Vec<_> = look.lines().collect();
+    assert_eq!(lines.len(), 4, "{look}");
+    assert_eq!(lines[0], "A warm kitchen. Bread is cooling on the sill.");
     assert!(
-        is(&refused, |e| matches!(e, Error::Denied(_))),
-        "{refused:?}"
+        lines[1].contains("You see the lamp. A brass lamp, dull with age."),
+        "{look}"
+    );
+    assert!(
+        lines[1].contains("You see the pebble. A smooth grey pebble."),
+        "{look}"
+    );
+    assert_eq!(lines[2..], ["Exits: east.", "You carry nothing."]);
+    assert_eq!(
+        w.file("room/kitchen.ttl"),
+        kitchen,
+        "the room itself is unchanged"
+    );
+    assert!(w.file("world.txt").contains("urn:resmud:thing:id:pebble"));
+    // A placed thing is a thing like any other: it can be taken.
+    assert_eq!(
+        w.play("sink urn:resmud:verb:name:take pebble").unwrap(),
+        "You take the pebble."
     );
 }
 
 #[test]
-fn a_take_recomputes_what_read_the_taken_thing_and_keeps_the_rest() {
+fn a_take_recomputes_only_what_read_the_two_atoms_it_wrote() {
     let w = World::new();
     let alice = w.alice();
     let scope = || resmud::corridor("alice");
@@ -264,21 +307,24 @@ fn a_take_recomputes_what_read_the_taken_thing_and_keeps_the_rest() {
         w.kernel
             .is_cached_in(&Request::new(Verb::Source, iri(name)), &alice, &scope())
     };
+    // A take writes the kitchen's contents and what alice carries, and nothing else, so only
+    // what read one of those two atoms recomputes: a room elsewhere, its text included, stays
+    // cached, and so does the taken thing's own description.
     let kept = [
-        // Questions about one atom hang from that atom alone.
         "urn:resmud:room:id:garden:description",
         "urn:resmud:room:id:garden:exit",
+        "urn:resmud:room:id:garden:content:line",
+        "urn:resmud:view:room:id:garden",
         "urn:resmud:room:id:kitchen:description",
+        "urn:resmud:room:id:kitchen:exit",
         "urn:resmud:character:id:alice:place",
+        "urn:resmud:thing:id:lamp:description",
     ];
-    // What lists the world reads every thing's atom, because a thing's place is said by
-    // its own atom: so taking the lamp recomputes every room's contents, not only the
-    // kitchen's. The design hoped a room elsewhere would stay cached; in this build its
-    // description and exits do, and its contents do not.
     let recomputed = [
         "urn:resmud:room:id:kitchen:content",
-        "urn:resmud:room:id:garden:content",
-        "urn:resmud:view:room:id:garden",
+        "urn:resmud:room:id:kitchen:content:line",
+        "urn:resmud:view:room:id:kitchen",
+        "urn:resmud:character:id:alice:carries",
         "urn:resmud:character:id:alice:inventory",
     ];
     for name in kept.iter().chain(&recomputed) {
@@ -289,13 +335,13 @@ fn a_take_recomputes_what_read_the_taken_thing_and_keeps_the_rest() {
     for name in kept {
         assert!(
             cached(name),
-            "{name} did not read the lamp, and stays cached"
+            "{name} did not read either atom the take wrote, and stays cached"
         );
     }
     for name in recomputed {
         assert!(
             !cached(name),
-            "{name} read the lamp's atom, and its thread was cut"
+            "{name} read an atom the take wrote, and its thread was cut"
         );
     }
 }

@@ -1,0 +1,9 @@
+# One atom of what something holds, with one more thing in it: every triple of the atom,
+# plus ?holder ?how ?thing. ?atom, ?holder, ?how and ?thing are bound by the caller; the
+# VALUES row only puts the last three in scope, which a binding needs. The atom's triples
+# are OPTIONAL, so an empty atom still answers the one new triple. A thing already there
+# is not listed twice: a graph holds a triple once.
+CONSTRUCT { ?s ?p ?o . ?holder ?how ?thing } WHERE {
+  VALUES (?holder ?how ?thing) { (UNDEF UNDEF UNDEF) }
+  OPTIONAL { GRAPH ?atom { ?s ?p ?o } }
+}

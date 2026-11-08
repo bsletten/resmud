@@ -1,4 +1,7 @@
 urn:resmud:room:id:kitchen
+urn:resmud:room:id:kitchen:content
 urn:resmud:room:id:garden
+urn:resmud:room:id:garden:content
 urn:resmud:thing:id:lamp
 urn:resmud:character:id:alice
+urn:resmud:character:id:alice:carries

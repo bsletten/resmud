@@ -1,0 +1,15 @@
+# The graphs a room's contents line reads, one name per line: the room's contents atom,
+# and the atom of each thing it lists (for the thing's label and description). Run over the
+# contents atom alone, so a room's contents line hangs from that atom and the atoms of the
+# things in it, never from the world.
+PREFIX rms: <https://iriref.org/resmud/space#>
+SELECT ?line ?subject WHERE {
+  { BIND(CONCAT(STR(?subject), ":content") AS ?line) }
+  UNION
+  {
+    ?subject rms:contains ?thing .
+    FILTER(STRSTARTS(STR(?thing), "urn:resmud:thing:id:"))
+    BIND(STR(?thing) AS ?line)
+  }
+}
+ORDER BY ?line
