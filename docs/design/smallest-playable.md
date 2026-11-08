@@ -92,11 +92,17 @@ and maps each, as text, to the REPL line that names an existing resource:
 | a player types | the door issues |
 |---|---|
 | `look` | `source urn:resmud:look` |
+| `look lamp` | `source urn:resmud:thing:id:lamp:description` |
 | `help` or `what` | `source urn:resmud:affordance` |
 | `go east`, `take lamp`, `drop lamp` | `sink urn:resmud:verb:name:{go,take,drop} …` |
 | `polish lamp` (any other first word) | `sink urn:resmud:verb:id:polish lamp` |
 | `source …`, `sink …`, `exists …` | the line itself |
 | `quit` | leaves |
+
+The door's own words are read in any case (`Look`, `GO east`). A verb a player wrote, a thing and
+the REPL's grammar keep their case, because the realm's names are lowercase keys: `look Lamp` is
+refused as `take Lamp` is, by the door itself, so a volume that folds case cannot answer it
+differently from one that does not.
 
 It prints plain text only: a refusal is `resmud::refusal_with_help` of the kernel's typed error
 with the door's word `help` (the door's resolver keeps each line's first error, because the engine
