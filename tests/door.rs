@@ -10,7 +10,7 @@
 mod common;
 
 use common::*;
-use resmud::door::{Door, Turn, PROMPT, WITHHELD};
+use resmud::door::{Door, Turn, LOOK_AT_ONE, PROMPT, WITHHELD};
 use resmud::ikigai_core::{Capability, Error, Request, Scope, Verb};
 
 /// The answer a turn printed, or a panic naming the refusal.
@@ -61,7 +61,15 @@ fn the_smallest_playable_thing_plays_through_the_door() {
                  You carry nothing.";
     assert_eq!(said(door.eval("look")), first);
     assert_eq!(said(door.eval("source urn:resmud:look")), first);
+    assert_eq!(
+        said(door.eval("Look")),
+        first,
+        "the door's words are read in any case"
+    );
+    assert_eq!(said(door.eval("LOOK")), first);
     assert!(cached(&w), "the room text is cached after a look");
+    // `look lamp` is the lamp's own description.
+    assert_eq!(said(door.eval("look lamp")), "A brass lamp, dull with age.");
 
     // 2. `take lamp`; `look` again: the lamp is gone from the room's text, and the
     //    character carries it, recomputed because its thread was cut.
@@ -90,6 +98,11 @@ fn the_smallest_playable_thing_plays_through_the_door() {
     assert!(
         look.ends_with("You carry the lamp. A brass lamp, polished until it shines."),
         "{look}"
+    );
+    assert_eq!(
+        said(door.eval("look lamp")),
+        "A brass lamp, polished until it shines.",
+        "the lamp's description recomputed when the verb rewrote it"
     );
 
     // 4. A copy of `polish` with one byte changed is refused (Denied).
@@ -191,7 +204,7 @@ fn asking_what_you_can_do_here_is_the_affordance_list() {
     assert!(matches!(error, Some(Error::Denied(_))), "{error:?}");
     assert_eq!(
         sentence,
-        "You may not do that here: ask what you can do here to see what you may."
+        "You may not do that here: type help to see what you may."
     );
 }
 
@@ -207,6 +220,11 @@ fn the_door_shows_a_refusal_never_the_error() {
         (
             "go sideways",
             "\"sideways\" is not a direction: say north, south, east, west, up or down.",
+        ),
+        // A direction is a name of the realm's, and keeps its case.
+        (
+            "go East",
+            "\"East\" is not a direction: say north, south, east, west, up or down.",
         ),
         (
             "take zebra",
@@ -232,14 +250,11 @@ fn the_door_shows_a_refusal_never_the_error() {
             "That needs one more word: a direction to go, or the thing to take, drop or run a \
              verb on, such as take lamp.",
         ),
-        // A first word the door does not know is a verb a player wrote. ⚠ A verb nobody
-        // published reads as one that names no author (the runner reads the author first),
-        // which says nothing about a typo: a known limitation, in ACCESSIBILITY.md.
-        (
-            "dance",
-            "The verb dance names no author, so its signature cannot be checked: its author \
-             can publish it again with their name.",
-        ),
+        // A first word the door does not know is a verb a player wrote, and a verb nobody
+        // published is refused as one, before its author or its thing is read.
+        ("dance", "There is no verb called dance."),
+        ("dance lamp", "There is no verb called dance."),
+        ("dance Lamp", "There is no verb called dance."),
         (
             "Polish lamp",
             "\"Polish\" is not the name of a verb: say it the way its author published it, \
@@ -248,15 +263,22 @@ fn the_door_shows_a_refusal_never_the_error() {
         // The REPL's own grammar reaches the kernel's refusals, phrased.
         (
             "sink urn:resmud:thing:id:lamp gone",
-            "That cannot be done to it: ask what you can do here.",
+            "That cannot be done to it: type help to see what you can do here.",
         ),
         (
             "source urn:file:thing/lamp.ttl",
             "There is nothing by that name in this realm.",
         ),
+        // `look` and a thing: its name is checked as `take` checks it.
+        (
+            "look Lamp",
+            "\"Lamp\" is not the name of a thing: say it the way look shows it, such as lamp.",
+        ),
+        ("look zebra", "There is nothing by that name in this realm."),
+        ("look at lamp", LOOK_AT_ONE),
         // Words the door gives no meaning beyond themselves.
-        ("look lamp", "Say look on its own."),
         ("help me", "Say help on its own."),
+        ("Help me", "Say help on its own."),
     ] {
         let turn = door.eval(line);
         assert_printable(line, &turn);
@@ -268,7 +290,7 @@ fn the_door_shows_a_refusal_never_the_error() {
     assert!(error.is_none(), "{error:?}");
     assert_eq!(
         sentence,
-        "That is not something this realm understands: ask what you can do here."
+        "That is not something this realm understands: type help to see what you can do here."
     );
 }
 
@@ -279,6 +301,10 @@ fn the_door_prints_only_plain_text() {
     let door = w.door();
     for line in [
         "look",
+        "LOOK",
+        "look lamp",
+        "look Lamp",
+        "look zebra",
         "help",
         "source urn:resmud:view:room:id:kitchen",
         "take lamp",

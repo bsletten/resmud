@@ -7,27 +7,36 @@
 //! [`serve`] is the line loop around it, which `examples/door.rs` runs at a terminal.
 //!
 //! **The player's words.** The affordance list teaches a player to type `go east`, `take lamp`
-//! and `polish lamp`, and the refusals say `look` and "ask what you can do here", so the door
-//! accepts those words. Each maps, as text, to the REPL line that names an existing resource,
+//! and `polish lamp`, and the refusals say `look` and `help` ([`HELP`]), so the door accepts
+//! those words. Each maps, as text, to the REPL line that names an existing resource,
 //! and the engine does the rest; the door adds no game logic:
 //!
 //! | a player types | the door issues |
 //! |---|---|
 //! | `look` | `source urn:resmud:look` |
+//! | `look lamp` | `source urn:resmud:thing:id:lamp:description` (the thing's description) |
 //! | `help` or `what` | `source urn:resmud:affordance` (what you can do here) |
 //! | `go east`, `take lamp`, `drop lamp` | `sink urn:resmud:verb:name:{go,take,drop} …` |
 //! | `polish lamp` (any other first word) | `sink urn:resmud:verb:id:polish lamp`, a verb a player wrote |
 //! | `source …`, `sink …`, `exists …` | the line itself, in the REPL's own grammar |
 //! | `quit` | leaves |
 //!
+//! The door's own words are read in any case (`Look`, `GO east`); a verb a player wrote, a thing
+//! and the REPL's grammar keep theirs, because the realm's names are lowercase (`Polish lamp` is
+//! refused, as `take Lamp` is).
+//!
 //! The engine's other commands (`cap`, `list`, `bind`, `trace`, Lisp) are not a player's:
 //! their answers name resources by IRI. A first word that is not in the table is a verb a
 //! player wrote, so `list` asks the realm for a verb called `list`, and the realm says it has
 //! none.
 //!
-//! **What the door prints is plain text, always.** A refusal is [`crate::refusal`] of the
-//! TYPED error the kernel raised, never the engine's message (which names resources by IRI
+//! **What the door prints is plain text, always.** A refusal is [`crate::refusal_with_help`] of
+//! the TYPED error the kernel raised, never the engine's message (which names resources by IRI
 //! for a programmer): the door's resolver keeps the first error of each line for exactly this.
+//! Where a refusal points at what the player can do here, it names this door's word for that
+//! ("type help to see what you can do here"); the word is the door's, so it is the door that
+//! passes it, and a host with a door of its own passes its own word, or calls
+//! [`crate::refusal`] and says "ask what you can do here".
 //! An answer that is not plain ([`crate::is_plain`], and no control characters, so no color)
 //! is withheld with a sentence saying so: `source urn:resmud:manifold` answers Turtle, which a
 //! player does not read.
@@ -46,14 +55,18 @@ use ikigai_core::{
 use ikigai_engine::{Action, Engine};
 use ikigai_resolve::{CacheStatus, Resolver};
 
-use crate::{corridor, is_plain, player, refusal, Realm};
+use crate::{corridor, edge, is_key, is_plain, player, refusal_with_help, Realm};
 
 /// The moves bound in code (`urn:resmud:verb:name:{move}`): the words `go`, `take` and `drop`.
 pub const MOVES: [&str; 3] = ["go", "take", "drop"];
 
+/// The door's word for what you can do here, which its refusals name. `what` means the same.
+pub const HELP: &str = "help";
+
 /// What the door says for an answer it will not print: one that is not plain text.
 pub const WITHHELD: &str =
-    "That answer is not plain text, so this door does not show it: ask what you can do here.";
+    "That answer is not plain text, so this door does not show it: type help to see what you can \
+     do here.";
 
 /// One turn at the door: what the player reads, if anything.
 #[derive(Debug)]
@@ -91,6 +104,9 @@ impl Turn {
     }
 }
 
+/// What `look` says given more than one word.
+pub const LOOK_AT_ONE: &str = "Say look on its own, or look and one thing, such as look lamp.";
+
 /// What a line of the player's words is.
 #[derive(Debug, PartialEq, Eq)]
 enum Words {
@@ -98,22 +114,32 @@ enum Words {
     Quit,
     /// A word that takes no more words, given some.
     Alone(String),
+    /// `look` and a word that is not the name of a thing: refused as `take` refuses it.
+    NotAThing(String),
+    /// A door word given words it cannot take: the sentence that says what it takes.
+    Usage(&'static str),
     /// A line in the REPL's grammar.
     Line(String),
 }
 
 /// Map a line of the player's words to the REPL line it means (see the module's table).
+///
+/// The door's own words (`look`, `help`, `what`, `quit` and the [`MOVES`]) are read in any
+/// case, so `Look` and `LOOK` are `look`. Everything else keeps its case: a verb a player wrote
+/// and a thing are NAMES, which the realm spells in lowercase (`crate::is_key`), and the REPL's
+/// `source`, `sink` and `exists` are its own grammar.
 fn words(line: &str) -> Words {
     let line = line.trim();
     let (word, rest) = match line.split_once(char::is_whitespace) {
         Some((word, rest)) => (word, rest.trim()),
         None => (line, ""),
     };
+    let said = word.to_lowercase();
     let alone = |line: &str| {
         if rest.is_empty() {
             Words::Line(line.to_string())
         } else {
-            Words::Alone(word.to_string())
+            Words::Alone(said.clone())
         }
     };
     let with = |target: String| {
@@ -124,19 +150,31 @@ fn words(line: &str) -> Words {
         }
     };
     match word {
-        "" => Words::Nothing,
+        "" => return Words::Nothing,
+        "source" | "sink" | "exists" => return Words::Line(line.to_string()),
+        _ => {}
+    }
+    match said.as_str() {
         "quit" if rest.is_empty() => Words::Quit,
-        "quit" => Words::Alone(word.to_string()),
-        "source" | "sink" | "exists" => Words::Line(line.to_string()),
-        "look" => alone("source urn:resmud:look"),
-        "help" | "what" => alone("source urn:resmud:affordance"),
-        _ if MOVES.contains(&word) => with(format!("urn:resmud:verb:name:{word}")),
+        "quit" => Words::Alone(said),
+        "look" if rest.is_empty() => Words::Line("source urn:resmud:look".into()),
+        // `look lamp`: the thing's description. Its name is checked as the realm checks a
+        // thing's name, so `look Lamp` is refused as `take Lamp` is, on every file system (a
+        // volume that folds case would otherwise answer it differently from one that does not).
+        "look" if rest.contains(char::is_whitespace) => Words::Usage(LOOK_AT_ONE),
+        "look" if is_key(rest) => {
+            Words::Line(format!("source urn:resmud:thing:id:{rest}:description"))
+        }
+        "look" => Words::NotAThing(rest.to_string()),
+        w if w == HELP || w == "what" => alone("source urn:resmud:affordance"),
+        w if MOVES.contains(&w) => with(format!("urn:resmud:verb:name:{w}")),
         _ => with(format!("urn:resmud:verb:id:{word}")),
     }
 }
 
 /// The REPL line a line of the player's words issues, or `None` for one that issues nothing
-/// (an empty line, `quit`, or a word such as `look` given more words).
+/// (an empty line, `quit`, a word such as `help` given more words, or `look` given a word that
+/// is not the name of a thing).
 ///
 /// ```
 /// use resmud::door::request_line;
@@ -146,7 +184,12 @@ fn words(line: &str) -> Words {
 /// assert_eq!(request_line("polish lamp").as_deref(), Some("sink urn:resmud:verb:id:polish lamp"));
 /// assert_eq!(request_line("help").as_deref(), Some("source urn:resmud:affordance"));
 /// assert_eq!(request_line("source urn:resmud:look").as_deref(), Some("source urn:resmud:look"));
-/// assert_eq!(request_line("look lamp"), None);
+/// assert_eq!(
+///     request_line("look lamp").as_deref(),
+///     Some("source urn:resmud:thing:id:lamp:description")
+/// );
+/// assert_eq!(request_line("LOOK").as_deref(), Some("source urn:resmud:look"));
+/// assert_eq!(request_line("look Lamp"), None);
 /// assert_eq!(request_line("quit"), None);
 /// ```
 pub fn request_line(line: &str) -> Option<String> {
@@ -164,10 +207,13 @@ fn printable(s: &str) -> bool {
 
 /// The refusal for a line the engine could not read at all.
 fn not_understood() -> String {
-    refusal(&Error::InvalidArgument {
-        name: "line".into(),
-        detail: String::new(),
-    })
+    refusal_with_help(
+        &Error::InvalidArgument {
+            name: "line".into(),
+            detail: String::new(),
+        },
+        HELP,
+    )
 }
 
 /// The realm's kernel as the engine's resolver, for one player: every request resolves in the
@@ -385,6 +431,11 @@ impl Door {
             Words::Nothing => return Turn::Nothing,
             Words::Quit => return Turn::Quit,
             Words::Alone(word) => return Turn::refused(format!("Say {word} on its own."), None),
+            Words::Usage(said) => return Turn::refused(said, None),
+            Words::NotAThing(raw) => {
+                let error = edge::not_a_thing(&raw);
+                return Turn::refused(refusal_with_help(&error, HELP), Some(error));
+            }
             Words::Line(line) => line,
         };
         *self
@@ -402,7 +453,7 @@ impl Door {
                 Ok(text) if printable(&text) => Turn::Said(text),
                 Ok(_) => Turn::refused(WITHHELD, None),
                 Err(_) => match first_error {
-                    Some(error) => Turn::refused(refusal(&error), Some(error)),
+                    Some(error) => Turn::refused(refusal_with_help(&error, HELP), Some(error)),
                     None => Turn::refused(not_understood(), None),
                 },
             },
@@ -466,9 +517,50 @@ mod tests {
         assert_eq!(words(""), Words::Nothing);
         assert_eq!(words("   "), Words::Nothing);
         assert_eq!(words("quit"), Words::Quit);
-        assert_eq!(words("look lamp"), Words::Alone("look".into()));
         assert_eq!(words("help me"), Words::Alone("help".into()));
         assert_eq!(words("quit now"), Words::Alone("quit".into()));
+    }
+
+    #[test]
+    fn look_and_a_thing_is_the_things_description() {
+        assert_eq!(
+            words("look lamp"),
+            Words::Line("source urn:resmud:thing:id:lamp:description".into())
+        );
+        assert_eq!(
+            words("Look  brass-lamp-2"),
+            Words::Line("source urn:resmud:thing:id:brass-lamp-2:description".into())
+        );
+        assert_eq!(words("look Lamp"), Words::NotAThing("Lamp".into()));
+        assert_eq!(words("look lamp!"), Words::NotAThing("lamp!".into()));
+        assert_eq!(words("look at lamp"), Words::Usage(LOOK_AT_ONE));
+    }
+
+    #[test]
+    fn the_doors_own_words_are_read_in_any_case() {
+        for (said, line) in [
+            ("Look", "source urn:resmud:look"),
+            ("LOOK", "source urn:resmud:look"),
+            ("lOoK", "source urn:resmud:look"),
+            ("Help", "source urn:resmud:affordance"),
+            ("WHAT", "source urn:resmud:affordance"),
+            ("Go east", "sink urn:resmud:verb:name:go east"),
+            ("TAKE lamp", "sink urn:resmud:verb:name:take lamp"),
+            ("Drop lamp", "sink urn:resmud:verb:name:drop lamp"),
+            // A NAME keeps its case: the realm decides what it means.
+            ("go East", "sink urn:resmud:verb:name:go East"),
+            ("Polish lamp", "sink urn:resmud:verb:id:Polish lamp"),
+            // The REPL's grammar is its own, and exact.
+            (
+                "Source urn:resmud:look",
+                "sink urn:resmud:verb:id:Source urn:resmud:look",
+            ),
+        ] {
+            assert_eq!(words(said), Words::Line(line.into()), "{said}");
+        }
+        assert_eq!(words("QUIT"), Words::Quit);
+        assert_eq!(words("Quit now"), Words::Alone("quit".into()));
+        assert_eq!(words("HELP me"), Words::Alone("help".into()));
     }
 
     #[test]
@@ -478,5 +570,16 @@ mod tests {
         assert!(!printable("<urn:resmud:room:id:kitchen> a rms:Room ."));
         assert!(printable(WITHHELD));
         assert!(is_plain(&not_understood()));
+    }
+
+    #[test]
+    fn the_word_the_refusals_name_is_a_word_the_door_takes() {
+        assert_eq!(
+            words(HELP),
+            Words::Line("source urn:resmud:affordance".into())
+        );
+        for said in [WITHHELD.to_string(), not_understood()] {
+            assert!(said.contains(&format!("type {HELP} to see")), "{said}");
+        }
     }
 }

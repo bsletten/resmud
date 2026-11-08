@@ -11,7 +11,7 @@ conformance claim. Adapted from the [ACCESSIBILITY.md template](https://github.c
 | Status | Evaluation in progress. No conformance claim. |
 | Owner | the maintainers of this repository |
 | Report a barrier | [a GitHub issue](https://github.com/bsletten/resmud/issues/new?labels=accessibility) with the `accessibility` label; anything security-sensitive through [private vulnerability reporting](https://github.com/bsletten/resmud/security/advisories/new) |
-| Last reviewed | 2026-11-04 |
+| Last reviewed | 2026-11-07 |
 
 ## What it emits that people read
 
@@ -34,8 +34,9 @@ emits, as `text/plain; charset=utf-8`:
 - **The door** (`resmud::door`, run by `cargo run --example door`): the `ikigai` REPL opened
   for one player. It shows a prompt (`> `), reads a line, and prints the answer or the refusal
   as lines of plain text. It takes the words the affordance list and the refusals teach:
-  `look`; `help` or `what` (ask what you can do here); `go east`, `take lamp`, `drop lamp`;
-  a verb a player wrote and a thing (`polish lamp`); `quit`. It also takes the REPL's own
+  `look`; `look` and a thing (`look lamp`, the thing's description); `help` or `what` (what you
+  can do here); `go east`, `take lamp`, `drop lamp`; a verb a player wrote and a thing
+  (`polish lamp`); `quit`. The door's own words are read in any case (`Look`, `LOOK`). It also takes the REPL's own
   `source`, `sink` and `exists` lines (`source urn:resmud:look`). The example's one greeting
   line says which words to start with.
 
@@ -70,11 +71,18 @@ What the build now holds, and how:
   `resmud::refusal` passes a message through only when it is plain (no `urn:` starting a word, no
   `://`, no angle brackets, no backticks: `resmud::is_plain`), and otherwise gives a plain sentence
   for that kind of refusal (`You may not do that here: ask what you can do here to see what you
-  may.`). Every refusal ends as a sentence: a capital letter and a period. `tests/refusal.rs` pins
+  may.`). At the door, where such a sentence points at what you can do here, it names the door's
+  word for that instead (`You may not do that here: type help to see what you may.`), through
+  `resmud::refusal_with_help`. Every refusal ends as a sentence: a capital letter and a period. `tests/refusal.rs` pins
   the exact sentence of every refusal it reaches, and checks each is plain;
   `src/plain.rs` checks that every kind of kernel error maps to a plain sentence.
+- **A word that names no verb is told so.** The door reads any first word it does not know as a
+  verb a player wrote, and the verb runner checks that the verb was published before it reads
+  anything else, so a typo is refused in plain words (`There is no verb called dance.`), not with
+  a sentence about the verb's author or the thing it was given (`tests/door.rs`,
+  `tests/refusal.rs`, `a_verb_nobody_published_is_not_found_before_its_author_or_thing_is_read`).
 - **The door prints plain text and nothing else.** A refusal at the door is
-  `resmud::refusal` of the kernel's typed error, never the engine's message (which names
+  `resmud::refusal_with_help` of the kernel's typed error, with the door's word `help`, never the engine's message (which names
   resources by IRI): the door keeps each line's first error for exactly this. A line the engine
   cannot read at all gets a plain sentence too. An answer that is not plain (a resource that
   answers Turtle, such as `source urn:resmud:manifold`) or that carries a control character (so
@@ -103,21 +111,23 @@ What the build now holds, and how:
   is announced.
 - **Only `resmud::door` is known to call `resmud::refusal`.** The error itself still carries the
   kernel's words (with IRIs) for a programmer, so a host that builds its own door on the engine
-  or the kernel, instead of using this one, must call `resmud::refusal` itself.
+  or the kernel, instead of using this one, must call `resmud::refusal` itself, or
+  `resmud::refusal_with_help` with its own word for what you can do here. Given no word,
+  a refusal says "ask what you can do here", which names no word the host may lack.
 - **A kernel refusal mapped at the edge loses its specifics.** `You may not do that here` does not
   say which capability is missing, and `There is nothing by that name in this realm` does not say
   which name: the kernel's message names them only by IRI. Better words need the door to know what
   the player asked for.
-- **"Ask what you can do here" has two words at the door, `help` and `what`, and the refusals do
-  not say them.** A refusal still says "ask what you can do here", which a player has to
-  connect to the word. A visitor offered nothing gets an empty answer, which the door prints as an
-  empty line rather than a sentence.
-- **A word the realm has no verb for gets the wrong sentence.** The door reads any first word it
-  does not know as a verb a player wrote, and the verb runner reads a verb's author before
-  anything else, so a typo (`dance`) is told that the verb "names no author", not that there is no
-  such verb.
-- **The door's words are exact.** `Look` and `LOOK` are not `look`, and `look lamp` is refused
-  (`Say look on its own.`) rather than describing the lamp.
+- **A visitor offered nothing gets an empty answer to `help`**, which the door prints as an empty
+  line rather than a sentence.
+- **Only the door's own words are read in any case.** A verb a player wrote, a thing and a
+  direction are the realm's names, which are lowercase, so `Polish lamp`, `look Lamp` and
+  `go East` are refused, each with a sentence saying how to spell it.
+- **`look lamp` describes the lamp wherever it is.** It reads the thing's description by name and
+  does not check that the thing is here, so a player can look at a thing in another room if they
+  know its name. Whether looking should be limited to what is here is a rule of the game the door
+  does not make. `look` and the name of a room or a character is not mapped (`There is nothing by
+  that name in this realm.`).
 - **The REPL's grammar at the door can narrow a session.** `sink urn:host:login …` (the engine's
   own login) lowers the session to what it names, and never above the player's capability; a
   player who does it is refused until `sink urn:host:logout`.
@@ -155,3 +165,6 @@ technology, if you are comfortable sharing them. Anything security-sensitive goe
 | 2026-11-03 | The first playable build: what its text face emits, the rules it now holds and how they are tested. |
 | 2026-11-03 | Refusals in plain words, mapped at the edge by `resmud::refusal`; no angle brackets in the affordance list. |
 | 2026-11-04 | The first door, the `ikigai` REPL (`resmud::door`): its words, `help` and `what` for what you can do here, a refusal shown as `resmud::refusal` and never the error, and only plain text printed. |
+| 2026-11-07 | A word that names no verb is refused as such (`There is no verb called dance.`), before the verb's author is read (resmud#53). |
+| 2026-11-07 | Refusals at the door name its word for what you can do here (`type help to see what you can do here`), through `resmud::refusal_with_help` (resmud#54). |
+| 2026-11-07 | `look` and a thing describes it, and the door's own words are read in any case (resmud#55). |
