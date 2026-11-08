@@ -37,11 +37,15 @@ use ikigai_core::{
 use serde_json::json;
 
 use crate::query::{construct, select, text, uri};
-use crate::{iri, is_key, Realm, CAP_VERB_RUN, CAP_WRITE_PREFIX, TARGET, WRITABLE_KINDS};
+use crate::{
+    iri, is_key, Realm, CAP_VERB_RUN, CAP_WRITE_PREFIX, SPACE_VOCABULARY, TARGET, VOCABULARY,
+    WRITABLE_KINDS,
+};
 
 const XSD_STRING: &str = "http://www.w3.org/2001/XMLSchema#string";
 
-/// One atom a plan rewrites: its kind (`thing`), its key (`lamp`) and its name.
+/// One atom a plan rewrites: its kind (`thing`, or `content` for a room's contents), its key
+/// (`lamp`, `kitchen`) and its name.
 struct Atom {
     kind: String,
     key: String,
@@ -51,6 +55,31 @@ struct Atom {
 impl Atom {
     fn file(&self) -> String {
         format!("urn:file:{}/{}.ttl", self.kind, self.key)
+    }
+
+    /// For an atom of where things are, the holder and how it holds them (`rms:contains`
+    /// for a room's contents, `rm:carries` for what a character carries).
+    fn holding(&self) -> Option<(String, String)> {
+        match self.kind.as_str() {
+            "content" => Some((
+                format!("urn:resmud:room:id:{}", self.key),
+                format!("{SPACE_VOCABULARY}contains"),
+            )),
+            "carries" => Some((
+                crate::character_iri(&self.key),
+                format!("{VOCABULARY}carries"),
+            )),
+            _ => None,
+        }
+    }
+
+    /// What the refusal calls it: the key, or where the thing goes.
+    fn said(&self) -> String {
+        match self.kind.as_str() {
+            "content" => format!("{}'s contents", self.key),
+            "carries" => format!("things {} carries", self.key),
+            _ => self.key.clone(),
+        }
     }
 }
 
@@ -72,9 +101,16 @@ fn atom_of(verb: &str, subject: &str) -> Result<Atom> {
              or its authors: that is legislation, not play"
         )));
     }
+    // Where things are has atoms of its own: `…:room:id:kitchen:content` is the file
+    // `content/kitchen.ttl`, and `…:character:id:alice:carries` is `carries/alice.ttl`.
     let parsed = subject
         .strip_prefix("urn:resmud:")
         .and_then(|rest| rest.split_once(":id:"))
+        .map(|(kind, key)| match (kind, key.split_once(':')) {
+            ("room", Some((room, "content"))) => ("content", room),
+            ("character", Some((character, "carries"))) => ("carries", character),
+            _ => (kind, key),
+        })
         .filter(|(kind, key)| WRITABLE_KINDS.contains(kind) && is_key(key));
     match parsed {
         Some((kind, key)) => Ok(Atom {
@@ -90,6 +126,18 @@ fn atom_of(verb: &str, subject: &str) -> Result<Atom> {
                  realm, so it does not run"
             ),
         }),
+    }
+}
+
+/// A kind of atom as a refusal says it: "a thing", "a room's contents".
+fn kind_said(kind: &str) -> &'static str {
+    match kind {
+        "thing" => "a thing",
+        "character" => "a character",
+        "room" => "a room",
+        "content" => "what a room contains",
+        "carries" => "what a character carries",
+        _ => "that",
     }
 }
 
@@ -311,8 +359,9 @@ pub fn runner(realm: Realm) -> AsyncFnEndpoint {
                 if !clamp.allows(&token) {
                     return Err(Error::Denied(format!(
                         "the verb {verb} writes the {}, and it runs under no more than both \
-                         {author}'s grant and yours, which together do not cover writing a {}",
-                        atom.key, atom.kind
+                         {author}'s grant and yours, which together do not cover writing {}",
+                        atom.said(),
+                        kind_said(&atom.kind)
                     )));
                 }
             }
@@ -334,17 +383,38 @@ pub fn runner(realm: Realm) -> AsyncFnEndpoint {
                 } else {
                     plan.clone()
                 };
-                let candidate = construct(
-                    inv,
-                    "patch",
-                    &graph,
-                    json!({
-                        "atom": uri(&atom.name),
-                        "plan": uri(&plan),
-                        "target": uri(&target),
-                    }),
-                )
-                .await?;
+                // An atom of where things are takes the plan's placements and loses nothing;
+                // every other atom takes the plan's triples about its subject.
+                let candidate = match atom.holding() {
+                    Some((holder, how)) => {
+                        construct(
+                            inv,
+                            "patch-holding",
+                            &graph,
+                            json!({
+                                "atom": uri(&atom.name),
+                                "holder": uri(&holder),
+                                "how": uri(&how),
+                                "plan": uri(&plan),
+                                "target": uri(&target),
+                            }),
+                        )
+                        .await?
+                    }
+                    None => {
+                        construct(
+                            inv,
+                            "patch",
+                            &graph,
+                            json!({
+                                "atom": uri(&atom.name),
+                                "plan": uri(&plan),
+                                "target": uri(&target),
+                            }),
+                        )
+                        .await?
+                    }
+                };
                 let refused = violations(inv, shapes.clone(), candidate.clone()).await?;
                 if !refused.is_empty() {
                     return Err(Error::InvalidArgument {
@@ -358,7 +428,10 @@ pub fn runner(realm: Realm) -> AsyncFnEndpoint {
                 written.push((atom, candidate, exists));
             }
 
-            // 5. The write, under the clamp.
+            // 5. The write, under the clamp. Where things are is written last, so a thing a
+            //    verb creates and places exists before any room lists it: a failure between
+            //    the writes leaves a thing nowhere, never a room listing a thing that is not.
+            written.sort_by_key(|(atom, _, _)| atom.holding().is_some());
             let mut created = Vec::new();
             for (atom, candidate, exists) in &written {
                 let write = Request::new(Verb::Sink, iri(&atom.file()))
@@ -461,6 +534,38 @@ mod tests {
     fn an_atom_maps_to_its_file() {
         let atom = atom_of("polish", "urn:resmud:thing:id:lamp").unwrap();
         assert_eq!(atom.file(), "urn:file:thing/lamp.ttl");
+        assert!(atom.holding().is_none());
+    }
+
+    #[test]
+    fn where_things_are_maps_to_its_own_atoms() {
+        let content = atom_of("conjure", "urn:resmud:room:id:kitchen:content").unwrap();
+        assert_eq!(content.kind, "content");
+        assert_eq!(content.file(), "urn:file:content/kitchen.ttl");
+        assert_eq!(
+            content.holding(),
+            Some((
+                "urn:resmud:room:id:kitchen".to_string(),
+                format!("{SPACE_VOCABULARY}contains")
+            ))
+        );
+        let carries = atom_of("conjure", "urn:resmud:character:id:alice:carries").unwrap();
+        assert_eq!(carries.file(), "urn:file:carries/alice.ttl");
+        assert_eq!(
+            carries.holding().map(|(holder, _)| holder),
+            Some("urn:resmud:character:id:alice".to_string())
+        );
+        // Any other suffix is not an atom of the realm.
+        for name in [
+            "urn:resmud:room:id:kitchen:description",
+            "urn:resmud:room:id:kitchen:carries",
+            "urn:resmud:character:id:alice:content",
+        ] {
+            assert!(
+                matches!(atom_of("conjure", name), Err(Error::InvalidArgument { .. })),
+                "{name}"
+            );
+        }
     }
 
     #[test]

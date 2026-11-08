@@ -1,15 +1,23 @@
 # One atom, patched by a verb's plan: the atom's triples, less every (subject,
 # predicate) pair the plan sets, plus the plan's triples about this atom's subject. The
 # plan's placeholder <urn:resmud:argument:name:target> is the thing the verb was run on.
+# A plan triple that places a thing (a room containing it, a character carrying it) belongs
+# to a contents or carries atom, `patch-holding`'s, so it is left out here on both sides.
 # ?atom, ?plan and ?target are bound by the caller; the VALUES row only puts ?target in
 # scope, which a binding needs.
+PREFIX rm:  <https://iriref.org/resmud/core#>
+PREFIX rms: <https://iriref.org/resmud/space#>
 CONSTRUCT { ?s ?p ?o } WHERE {
   VALUES (?target) { (UNDEF) }
   {
     GRAPH ?atom { ?s ?p ?o }
     FILTER NOT EXISTS {
       GRAPH ?plan { ?planned ?p ?any }
+      BIND(IF(?any = <urn:resmud:argument:name:target>, ?target, ?any) AS ?anyo)
       FILTER(IF(?planned = <urn:resmud:argument:name:target>, ?target, ?planned) = ?s)
+      FILTER(!(STRSTARTS(STR(?anyo), "urn:resmud:thing:id:")
+               && ((?p = rms:contains && STRSTARTS(STR(?s), "urn:resmud:room:id:"))
+                   || (?p = rm:carries && STRSTARTS(STR(?s), "urn:resmud:character:id:")))))
     }
   }
   UNION
@@ -18,5 +26,8 @@ CONSTRUCT { ?s ?p ?o } WHERE {
     BIND(IF(?planned = <urn:resmud:argument:name:target>, ?target, ?planned) AS ?s)
     BIND(IF(?value = <urn:resmud:argument:name:target>, ?target, ?value) AS ?o)
     FILTER(?s = ?atom)
+    FILTER(!(STRSTARTS(STR(?o), "urn:resmud:thing:id:")
+             && ((?p = rms:contains && STRSTARTS(STR(?s), "urn:resmud:room:id:"))
+                 || (?p = rm:carries && STRSTARTS(STR(?s), "urn:resmud:character:id:")))))
   }
 }

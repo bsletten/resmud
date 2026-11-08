@@ -1,5 +1,5 @@
-# A character's atom says who it is and where it is. What it carries is said by each
-# carried thing's atom, so taking a thing writes one atom.
+# A character's atom says who it is and where it is, so going somewhere rewrites this atom
+# alone. What it carries is its own atom, carries/alice.ttl.
 @prefix rm:   <https://iriref.org/resmud/core#> .
 @prefix rms:  <https://iriref.org/resmud/space#> .
 @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .

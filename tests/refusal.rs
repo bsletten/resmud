@@ -77,14 +77,15 @@ fn take_a_thing_that_is_not_here_is_a_conflict() {
     // In another room.
     w.play("sink urn:resmud:verb:name:drop lamp").unwrap();
     w.play("sink urn:resmud:verb:name:go east").unwrap();
-    let lamp = w.file("thing/lamp.ttl");
+    let (kitchen, carried) = (w.file("content/kitchen.ttl"), w.file("carries/alice.ttl"));
     let refused = w.play("sink urn:resmud:verb:name:take lamp");
     assert!(is(&refused, conflict), "{refused:?}");
     assert_eq!(
         said(&refused),
         "The lamp is not here: look to see what is in the garden."
     );
-    assert_eq!(w.file("thing/lamp.ttl"), lamp);
+    assert_eq!(w.file("content/kitchen.ttl"), kitchen);
+    assert_eq!(w.file("carries/alice.ttl"), carried);
 }
 
 #[test]

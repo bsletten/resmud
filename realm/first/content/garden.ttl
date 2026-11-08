@@ -1,0 +1,2 @@
+# What the garden contains (urn:resmud:room:id:garden:content): nothing yet.
+@prefix rms:  <https://iriref.org/resmud/space#> .

@@ -125,12 +125,21 @@ impl World {
     /// The `first` realm, copied from the repository's `realm/first` into a fresh scratch
     /// directory, with the test author's public key registered.
     pub fn new() -> World {
+        World::prepared(|root| {
+            copy_dir(
+                &Path::new(env!("CARGO_MANIFEST_DIR")).join("realm/first"),
+                root,
+            )
+        })
+    }
+
+    /// A `first` realm whose files `fill` writes into a fresh scratch directory (the realm's
+    /// root, which exists and is empty), with the test author's public key registered.
+    pub fn prepared(fill: impl FnOnce(&Path)) -> World {
         let dir = tempfile::tempdir().unwrap();
         let root: PathBuf = dir.path().join("first");
-        copy_dir(
-            &Path::new(env!("CARGO_MANIFEST_DIR")).join("realm/first"),
-            &root,
-        );
+        std::fs::create_dir_all(&root).unwrap();
+        fill(&root);
         let realm = Realm::new("first", &root).unwrap();
         let kernel = Arc::new(resmud::kernel(&realm, vec![keys()]).unwrap());
         let world = World { dir, realm, kernel };

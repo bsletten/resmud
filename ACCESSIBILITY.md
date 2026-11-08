@@ -28,6 +28,12 @@ emits, as `text/plain; charset=utf-8`:
   reader may read them aloud as "less than" and "greater than".
 - **The answer to a move or a verb**: one sentence (`You take the lamp.`, `You go east, to the
   garden.`, `You polish the lamp.`).
+- **A move that did not go as asked**: a take or a drop writes two files, so it can lose a race
+  or stop halfway, and either is said in a sentence. A player who loses a race for a thing is
+  told so (`Someone else took the lamp first: look to see what is in the kitchen.`) and holds
+  nothing. A move that stopped between its two writes says where the thing is now and the word
+  that puts it right (`The move did not finish: the lamp is in two places now, with you and in
+  the kitchen; drop it to put it right.`).
 - **Refusals**: one sentence in plain words saying what is wrong and, where it can, what to do
   instead (`There is no exit north from the kitchen: look to see the exits.`). A door shows a
   player `resmud::refusal(&error)`, never the error itself (see the rules below).
@@ -89,6 +95,12 @@ What the build now holds, and how:
   no terminal escape and no color) is withheld, with a sentence that says so, rather than
   printed. Tested in `tests/door.rs`: the six steps of the play, every refusal it reaches and a
   sweep of odd lines, each checked with `resmud::is_plain` and for control characters.
+- **A move never loses a thing silently.** A take or a drop writes where the thing goes before it
+  takes it out of where it was, so a failure between the two leaves the thing listed twice, never
+  nowhere, and the sentence says so and names the move that mends it (`tests/move.rs`,
+  `a_failure_between_the_two_writes_leaves_the_thing_in_both_places_and_says_so`). Two players
+  taking one thing at once end with exactly one holding it, and the other told why in plain words
+  (`two_players_taking_one_thing_at_once_leave_exactly_one_holding_it`).
 - **No angle brackets in what a player reads.** The affordance list says what each action takes in
   words (`go a direction`, `a verb a player wrote, then a thing`), and the plain-text test checks
   every answer of the text face, the affordance list included, with `resmud::is_plain`.
@@ -138,6 +150,12 @@ What the build now holds, and how:
   need not be in another.
 - **A signature's verdict is not shown to a player.** A tampered verb and one signed by someone
   else get the same sentence; which key or hash failed is in the verdict, not the refusal.
+- **A room's things are listed in no promised order.** A room holding two or more things lists
+  them on one line in whatever order the query answers, which can differ from one realm to
+  another; the stored query does not sort them.
+- **While a take or a drop is in flight, the thing is briefly listed in both places.** A look
+  between the two writes sees it in the room and with the taker. The sentence a player reads after
+  a lost race or a failed move is tested; what someone else sees during that moment is not.
 - **The shapes cover only what a verb writes.** A realm's own files, written by its operator, are
   not checked, and the check reads only `sh:targetClass`, `sh:path` and `sh:minCount`.
 - Live updates (a room's text changing as its contents change) will need a way to pause them (WCAG
@@ -168,3 +186,4 @@ technology, if you are comfortable sharing them. Anything security-sensitive goe
 | 2026-11-07 | A word that names no verb is refused as such (`There is no verb called dance.`), before the verb's author is read (resmud#53). |
 | 2026-11-07 | Refusals at the door name its word for what you can do here (`type help to see what you can do here`), through `resmud::refusal_with_help` (resmud#54). |
 | 2026-11-07 | `look` and a thing describes it, and the door's own words are read in any case (resmud#55). |
+| 2026-11-07 | Where things are moved into atoms of their own (resmud#52): a lost race and a move that stopped halfway each say so in a sentence, and a thing is never lost silently. |

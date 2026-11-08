@@ -1,0 +1,6 @@
+# What the kitchen contains, as an atom of its own (urn:resmud:room:id:kitchen:content):
+# taking or dropping a thing here rewrites this atom and the taker's carries atom, and no
+# other room's.
+@prefix rms:  <https://iriref.org/resmud/space#> .
+
+<urn:resmud:room:id:kitchen> rms:contains <urn:resmud:thing:id:lamp> .

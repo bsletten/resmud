@@ -1,7 +1,8 @@
 # An author: the key a verb's signature must verify against, and the grant a verb they
-# wrote runs under. Sealed: no verb may write it.
+# wrote runs under: rewriting things, and putting a thing in a room (a room's contents),
+# but not rewriting the rooms themselves. Sealed: no verb may write it.
 @prefix rml:  <urn:resmud:term:name:> .
 
 <urn:resmud:author:id:alice>
     rml:key <urn:resmud:author:id:alice:key> ;
-    rml:grant "urn:cap:resmud:write:thing" .
+    rml:grant "urn:cap:resmud:write:thing" , "urn:cap:resmud:write:content" .

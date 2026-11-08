@@ -1,11 +1,9 @@
-# A thing's atom says what it is and where it is: rms:contains from its room, or
-# rm:carries from a character. Taking it rewrites this atom, and only this one.
+# A thing's atom says what it is, and nothing about where it is: that is said by the atom
+# of the room that contains it (content/{room}.ttl) or of the character that carries it
+# (carries/{character}.ttl). So moving it never rewrites this atom.
 @prefix rm:   <https://iriref.org/resmud/core#> .
-@prefix rms:  <https://iriref.org/resmud/space#> .
 @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
 
 <urn:resmud:thing:id:lamp> a rm:Item ;
     rdfs:label "lamp" ;
     rm:description "A brass lamp, dull with age." .
-
-<urn:resmud:room:id:kitchen> rms:contains <urn:resmud:thing:id:lamp> .

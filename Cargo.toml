@@ -17,8 +17,10 @@ publish = false
 # requests whose fixed arguments are reference templates.
 ikigai-core = "0.3.0"
 # The atoms are files under a realm directory, read through the cacheable mount so a write
-# through the kernel cuts exactly the file's golden thread.
-ikigai-fs = "0.4.0"
+# through the kernel cuts exactly the file's golden thread. 0.4.1 is the first release whose
+# Sink honors `if-match` (an atomic compare-and-replace), which a take or a drop uses on both
+# of its writes; under Cargo's 0.x rules `^0.4.1` is also a ceiling below 0.5.0.
+ikigai-fs = "0.4.1"
 # The verb language: a verb's source is a `(graph …)` s-expression, and its plan is the
 # source transrepted to Turtle by `urn:rdf:from-sexpr`.
 ikigai-sexpr = "0.4.0"

@@ -1,0 +1,3 @@
+# What Alice carries (urn:resmud:character:id:alice:carries): nothing yet. Each carried
+# thing is one triple, <urn:resmud:character:id:alice> rm:carries <thing>.
+@prefix rm:   <https://iriref.org/resmud/core#> .

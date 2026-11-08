@@ -1,7 +1,19 @@
-# The subjects a verb's plan writes, with its argument placeholder filled in: each one
-# names the atom the runner rewrites.
+# The atoms a verb's plan writes, with its argument placeholder filled in, one name per line.
+# A triple names its subject's atom, except one that places a thing: a room containing a
+# thing names the room's contents atom (`…:content`), and a character carrying a thing names
+# its carries atom (`…:carries`). So a grant can cover where things are without covering the
+# rooms and characters themselves.
+PREFIX rm:  <https://iriref.org/resmud/core#>
+PREFIX rms: <https://iriref.org/resmud/space#>
 SELECT DISTINCT ?line ?plan ?target WHERE {
-  GRAPH ?plan { ?written ?p ?o }
-  BIND(STR(IF(?written = <urn:resmud:argument:name:target>, ?target, ?written)) AS ?line)
+  GRAPH ?plan { ?written ?p ?value }
+  BIND(IF(?written = <urn:resmud:argument:name:target>, ?target, ?written) AS ?s)
+  BIND(IF(?value = <urn:resmud:argument:name:target>, ?target, ?value) AS ?o)
+  BIND(STRSTARTS(STR(?o), "urn:resmud:thing:id:") AS ?placed)
+  BIND(IF(?placed && ?p = rms:contains && STRSTARTS(STR(?s), "urn:resmud:room:id:"),
+          CONCAT(STR(?s), ":content"),
+          IF(?placed && ?p = rm:carries && STRSTARTS(STR(?s), "urn:resmud:character:id:"),
+             CONCAT(STR(?s), ":carries"),
+             STR(?s))) AS ?line)
 }
 ORDER BY ?line

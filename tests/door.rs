@@ -81,7 +81,8 @@ fn the_smallest_playable_thing_plays_through_the_door() {
         kitchen_before,
         "nothing rewrote the room"
     );
-    assert!(w.file("thing/lamp.ttl").contains("core#carries"));
+    assert!(w.file("carries/alice.ttl").contains("thing:id:lamp"));
+    assert!(!w.file("content/kitchen.ttl").contains("thing:id:lamp"));
     assert_eq!(
         said(door.eval("look")),
         "A warm kitchen. Bread is cooling on the sill.\n\
@@ -347,12 +348,13 @@ fn a_door_cannot_widen_its_players_authority() {
     let door = w.door_as(&visitor, resmud::corridor("alice"));
     // The engine's session commands are not a player's words: `cap` and `login` are verbs
     // no one wrote, and logging in through the REPL's grammar stays under the sealed floor.
-    let lamp = w.file("thing/lamp.ttl");
+    let carried = w.file("carries/alice.ttl");
     door.eval("cap reset");
     door.eval("sink urn:host:login urn:cap:resmud:play");
     let (_, error) = refused(door.eval("take lamp"));
     assert!(matches!(error, Some(Error::Denied(_))), "{error:?}");
-    assert_eq!(w.file("thing/lamp.ttl"), lamp, "nothing was taken");
+    assert_eq!(w.file("carries/alice.ttl"), carried, "nothing was taken");
+    assert!(w.file("content/kitchen.ttl").contains("thing:id:lamp"));
 }
 
 #[test]
