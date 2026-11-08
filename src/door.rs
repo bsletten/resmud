@@ -7,8 +7,8 @@
 //! [`serve`] is the line loop around it, which `examples/door.rs` runs at a terminal.
 //!
 //! **The player's words.** The affordance list teaches a player to type `go east`, `take lamp`
-//! and `polish lamp`, and the refusals say `look` and "ask what you can do here", so the door
-//! accepts those words. Each maps, as text, to the REPL line that names an existing resource,
+//! and `polish lamp`, and the refusals say `look` and `help` ([`HELP`]), so the door accepts
+//! those words. Each maps, as text, to the REPL line that names an existing resource,
 //! and the engine does the rest; the door adds no game logic:
 //!
 //! | a player types | the door issues |
@@ -25,9 +25,13 @@
 //! player wrote, so `list` asks the realm for a verb called `list`, and the realm says it has
 //! none.
 //!
-//! **What the door prints is plain text, always.** A refusal is [`crate::refusal`] of the
-//! TYPED error the kernel raised, never the engine's message (which names resources by IRI
+//! **What the door prints is plain text, always.** A refusal is [`crate::refusal_with_help`] of
+//! the TYPED error the kernel raised, never the engine's message (which names resources by IRI
 //! for a programmer): the door's resolver keeps the first error of each line for exactly this.
+//! Where a refusal points at what the player can do here, it names this door's word for that
+//! ("type help to see what you can do here"); the word is the door's, so it is the door that
+//! passes it, and a host with a door of its own passes its own word, or calls
+//! [`crate::refusal`] and says "ask what you can do here".
 //! An answer that is not plain ([`crate::is_plain`], and no control characters, so no color)
 //! is withheld with a sentence saying so: `source urn:resmud:manifold` answers Turtle, which a
 //! player does not read.
@@ -46,14 +50,18 @@ use ikigai_core::{
 use ikigai_engine::{Action, Engine};
 use ikigai_resolve::{CacheStatus, Resolver};
 
-use crate::{corridor, is_plain, player, refusal, Realm};
+use crate::{corridor, is_plain, player, refusal_with_help, Realm};
 
 /// The moves bound in code (`urn:resmud:verb:name:{move}`): the words `go`, `take` and `drop`.
 pub const MOVES: [&str; 3] = ["go", "take", "drop"];
 
+/// The door's word for what you can do here, which its refusals name. `what` means the same.
+pub const HELP: &str = "help";
+
 /// What the door says for an answer it will not print: one that is not plain text.
 pub const WITHHELD: &str =
-    "That answer is not plain text, so this door does not show it: ask what you can do here.";
+    "That answer is not plain text, so this door does not show it: type help to see what you can \
+     do here.";
 
 /// One turn at the door: what the player reads, if anything.
 #[derive(Debug)]
@@ -129,7 +137,7 @@ fn words(line: &str) -> Words {
         "quit" => Words::Alone(word.to_string()),
         "source" | "sink" | "exists" => Words::Line(line.to_string()),
         "look" => alone("source urn:resmud:look"),
-        "help" | "what" => alone("source urn:resmud:affordance"),
+        _ if word == HELP || word == "what" => alone("source urn:resmud:affordance"),
         _ if MOVES.contains(&word) => with(format!("urn:resmud:verb:name:{word}")),
         _ => with(format!("urn:resmud:verb:id:{word}")),
     }
@@ -164,10 +172,13 @@ fn printable(s: &str) -> bool {
 
 /// The refusal for a line the engine could not read at all.
 fn not_understood() -> String {
-    refusal(&Error::InvalidArgument {
-        name: "line".into(),
-        detail: String::new(),
-    })
+    refusal_with_help(
+        &Error::InvalidArgument {
+            name: "line".into(),
+            detail: String::new(),
+        },
+        HELP,
+    )
 }
 
 /// The realm's kernel as the engine's resolver, for one player: every request resolves in the
@@ -402,7 +413,7 @@ impl Door {
                 Ok(text) if printable(&text) => Turn::Said(text),
                 Ok(_) => Turn::refused(WITHHELD, None),
                 Err(_) => match first_error {
-                    Some(error) => Turn::refused(refusal(&error), Some(error)),
+                    Some(error) => Turn::refused(refusal_with_help(&error, HELP), Some(error)),
                     None => Turn::refused(not_understood(), None),
                 },
             },
@@ -478,5 +489,16 @@ mod tests {
         assert!(!printable("<urn:resmud:room:id:kitchen> a rms:Room ."));
         assert!(printable(WITHHELD));
         assert!(is_plain(&not_understood()));
+    }
+
+    #[test]
+    fn the_word_the_refusals_name_is_a_word_the_door_takes() {
+        assert_eq!(
+            words(HELP),
+            Words::Line("source urn:resmud:affordance".into())
+        );
+        for said in [WITHHELD.to_string(), not_understood()] {
+            assert!(said.contains(&format!("type {HELP} to see")), "{said}");
+        }
     }
 }

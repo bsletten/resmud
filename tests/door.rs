@@ -191,7 +191,7 @@ fn asking_what_you_can_do_here_is_the_affordance_list() {
     assert!(matches!(error, Some(Error::Denied(_))), "{error:?}");
     assert_eq!(
         sentence,
-        "You may not do that here: ask what you can do here to see what you may."
+        "You may not do that here: type help to see what you may."
     );
 }
 
@@ -245,7 +245,7 @@ fn the_door_shows_a_refusal_never_the_error() {
         // The REPL's own grammar reaches the kernel's refusals, phrased.
         (
             "sink urn:resmud:thing:id:lamp gone",
-            "That cannot be done to it: ask what you can do here.",
+            "That cannot be done to it: type help to see what you can do here.",
         ),
         (
             "source urn:file:thing/lamp.ttl",
@@ -265,7 +265,7 @@ fn the_door_shows_a_refusal_never_the_error() {
     assert!(error.is_none(), "{error:?}");
     assert_eq!(
         sentence,
-        "That is not something this realm understands: ask what you can do here."
+        "That is not something this realm understands: type help to see what you can do here."
     );
 }
 

@@ -61,6 +61,10 @@ fn sentence(s: &str) -> String {
 
 /// What a player reads when `error` refuses their request: one sentence in plain words.
 ///
+/// Where a sentence points the player at what they can do here, it says "ask what you can do
+/// here", because this function does not know what the player's door calls that. A door that
+/// has a word for it calls [`refusal_with_help`] instead.
+///
 /// ```
 /// use resmud::ikigai_core::Error;
 ///
@@ -78,6 +82,49 @@ fn sentence(s: &str) -> String {
 /// );
 /// ```
 pub fn refusal(error: &Error) -> String {
+    phrase(error, None)
+}
+
+/// [`refusal`], for a door whose word `help` answers what you can do here: where the sentence
+/// points the player there, it names the word ("type help to see what you can do here"). A
+/// word that is not one plain word (empty, with a space, or not [`is_plain`]) is not named, and
+/// the sentence says "ask what you can do here" as [`refusal`] does.
+///
+/// ```
+/// use resmud::ikigai_core::Error;
+///
+/// let floor = Error::Denied("capability does not grant `urn:cap:resmud:play`".into());
+/// assert_eq!(
+///     resmud::refusal_with_help(&floor, "help"),
+///     "You may not do that here: type help to see what you may."
+/// );
+/// let unsupported = Error::Unsupported { verb: None, detail: String::new() };
+/// assert_eq!(
+///     resmud::refusal_with_help(&unsupported, "help"),
+///     "That cannot be done to it: type help to see what you can do here."
+/// );
+/// // A refusal that is already plain is the endpoint's own words, unchanged.
+/// let no_exit = Error::Conflict("there is no exit north from the kitchen: look to see the exits".into());
+/// assert_eq!(resmud::refusal_with_help(&no_exit, "help"), resmud::refusal(&no_exit));
+/// ```
+pub fn refusal_with_help(error: &Error, help: &str) -> String {
+    let word = Some(help).filter(|w| {
+        !w.is_empty() && is_plain(w) && !w.contains(|c: char| c.is_whitespace() || c.is_control())
+    });
+    phrase(error, word)
+}
+
+/// What you can do here, as the generic sentences point to it.
+const HERE: &str = "what you can do here";
+
+/// The refusal for `error`, pointing at what the player can do here by `help`, the door's
+/// word for it, when there is one.
+fn phrase(error: &Error, help: Option<&str>) -> String {
+    let point = |see: &str| match help {
+        Some(word) => format!("type {word} to see {see}"),
+        None if see == HERE => format!("ask {HERE}"),
+        None => format!("ask {HERE} to see {see}"),
+    };
     let own = match error {
         Error::Denied(m) | Error::Conflict(m) | Error::NotFound(m) => Some(m.as_str()),
         Error::InvalidArgument { detail, .. } => Some(detail.as_str()),
@@ -86,24 +133,27 @@ pub fn refusal(error: &Error) -> String {
     if let Some(message) = own.filter(|m| is_plain(m) && !m.trim().is_empty()) {
         return sentence(message);
     }
-    sentence(match error {
-        Error::Denied(_) => {
-            "you may not do that here: ask what you can do here to see what you may"
+    sentence(&match error {
+        Error::Denied(_) => format!("you may not do that here: {}", point("what you may")),
+        Error::Conflict(_) => {
+            "that cannot be done now: look to see where you are and what is here".to_string()
         }
-        Error::Conflict(_) => "that cannot be done now: look to see where you are and what is here",
         Error::InvalidArgument { .. } => {
-            "that is not something this realm understands: ask what you can do here"
+            format!(
+                "that is not something this realm understands: {}",
+                point(HERE)
+            )
         }
-        Error::MissingArgument(_) => {
-            "that needs one more word: a direction to go, or the thing to take, drop or run a \
-             verb on, such as take lamp"
+        Error::MissingArgument(_) => "that needs one more word: a direction to go, or the thing \
+                                      to take, drop or run a verb on, such as take lamp"
+            .to_string(),
+        Error::NotFound(_) | Error::Unresolved(_) => {
+            "there is nothing by that name in this realm".to_string()
         }
-        Error::NotFound(_) | Error::Unresolved(_) => "there is nothing by that name in this realm",
-        Error::Unsupported { .. } => "that cannot be done to it: ask what you can do here",
-        _ => {
-            "something went wrong in the realm: try again, and if it keeps happening, tell the \
-             realm's operator"
-        }
+        Error::Unsupported { .. } => format!("that cannot be done to it: {}", point(HERE)),
+        _ => "something went wrong in the realm: try again, and if it keeps happening, tell the \
+              realm's operator"
+            .to_string(),
     })
 }
 
@@ -164,10 +214,31 @@ mod tests {
             },
             Error::Denied(String::new()),
         ] {
-            let said = refusal(&error);
-            assert!(is_plain(&said), "{error:?} -> {said}");
-            assert!(said.ends_with('.'), "{said}");
-            assert!(said.chars().next().unwrap().is_uppercase(), "{said}");
+            for said in [refusal(&error), refusal_with_help(&error, "help")] {
+                assert!(is_plain(&said), "{error:?} -> {said}");
+                assert!(said.ends_with('.'), "{said}");
+                assert!(said.chars().next().unwrap().is_uppercase(), "{said}");
+            }
         }
+    }
+
+    #[test]
+    fn a_door_word_that_is_not_one_plain_word_is_not_named() {
+        let denied = Error::Denied(String::new());
+        for word in ["", "type help", "<help>", "`help`", "help\u{1b}[0m"] {
+            assert_eq!(
+                refusal_with_help(&denied, word),
+                refusal(&denied),
+                "{word:?}"
+            );
+        }
+        assert_eq!(
+            refusal_with_help(&denied, "what"),
+            "You may not do that here: type what to see what you may."
+        );
+        assert_eq!(
+            refusal(&denied),
+            "You may not do that here: ask what you can do here to see what you may."
+        );
     }
 }

@@ -13,7 +13,8 @@
 //!   and answers its `?line` column as plain text. It is code because a named request cannot
 //!   carry a SPARQL binding (see its docs); the map as built says so;
 //! - [`refusal`]: what a player reads when a request is refused, one plain sentence, mapped
-//!   at the edge because some refusals are the kernel's own and name resources by IRI;
+//!   at the edge because some refusals are the kernel's own and name resources by IRI
+//!   ([`refusal_with_help`] for a door with a word for what you can do here);
 //! - [`door`]: the first door, the `ikigai` REPL (`ikigai-engine`) opened for one player, which
 //!   maps the player's words (`look`, `go east`, `polish lamp`) to REPL lines and shows every
 //!   refusal as [`refusal`] of it.
@@ -29,7 +30,7 @@ pub mod query;
 pub mod runner;
 mod text;
 
-pub use plain::{is_plain, refusal};
+pub use plain::{is_plain, refusal, refusal_with_help};
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;

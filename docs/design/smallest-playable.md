@@ -98,10 +98,12 @@ and maps each, as text, to the REPL line that names an existing resource:
 | `source …`, `sink …`, `exists …` | the line itself |
 | `quit` | leaves |
 
-It prints plain text only: a refusal is `resmud::refusal` of the kernel's typed error (the door's
-resolver keeps each line's first error, because the engine hands a frontend only its own message,
-which names resources by IRI), and an answer that is not plain, such as the Turtle of
-`urn:resmud:manifold`, is withheld with a sentence saying so. `tests/door.rs` replays the six steps
+It prints plain text only: a refusal is `resmud::refusal_with_help` of the kernel's typed error
+with the door's word `help` (the door's resolver keeps each line's first error, because the engine
+hands a frontend only its own message, which names resources by IRI), and an answer that is not
+plain, such as the Turtle of `urn:resmud:manifold`, is withheld with a sentence saying so. The
+refusals name `help` because the word is the door's: `resmud::refusal` alone says "ask what you can
+do here", so a host with its own door is never handed a word it lacks. `tests/door.rs` replays the six steps
 of [Done means](#done-means) through the door with the same expected text; `tests/play.rs` still
 plays them against the kernel.
 
