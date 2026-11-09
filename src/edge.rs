@@ -29,6 +29,11 @@
 //!    thing is still there it is removed from the new version. If it is not, someone else moved
 //!    it first: the thing is taken back out of the destination, and the move is refused as
 //!    a lost race.
+//! 3. A destination the realm keeps no file for yet (a room with no contents atom, read as
+//!    empty) is created by the move, with no `if-match`, since there is no version to name.
+//!    A file that appears while that write is in flight is read again; one created by another
+//!    writer between the read and the write is replaced, because `ikigai-fs` 0.4.1 has no
+//!    create-only condition (see the design's "The two-write move").
 //!
 //! | case | error |
 //! |---|---|
@@ -219,35 +224,37 @@ async fn holds(inv: &Invocation<'_>, at: &Holding, thing: &str) -> Result<bool> 
 
 /// The content id of `at`'s file as it is now: the `if-match` its next write carries. It is
 /// the id of the bytes alone, which `ikigai-fs` accepts whatever media type it reads the
-/// file as.
-async fn version(inv: &Invocation<'_>, at: &Holding) -> Result<String> {
-    let answer = inv.source(&iri(&at.file)).await.map_err(|e| match e {
-        Error::NotFound(_) => Error::Conflict(format!(
-            "the realm keeps no list of what is {}, so nothing can move there",
-            at.place
+/// file as. `None` when the realm keeps no file for it yet: it holds nothing, and the next
+/// write creates it.
+async fn version(inv: &Invocation<'_>, at: &Holding) -> Result<Option<String>> {
+    match inv.source(&iri(&at.file)).await {
+        Ok(answer) => Ok(Some(
+            Representation::new(ReprType::new("application/octet-stream"), answer.bytes)
+                .content_id()
+                .to_string(),
         )),
-        e => e,
-    })?;
-    Ok(
-        Representation::new(ReprType::new("application/octet-stream"), answer.bytes)
-            .content_id()
-            .to_string(),
-    )
+        Err(Error::NotFound(_)) => Ok(None),
+        Err(e) => Err(e),
+    }
 }
 
 /// Rewrite `at` by the stored CONSTRUCT `query` (`put` or `remove`) with `thing`, and write
-/// it, but only while the file is still the version `if_match`.
+/// it, but only while the file is still the version `if_match`. With no version (the file is
+/// not there) the write creates it; `ikigai-fs` refuses it (an `Endpoint` error saying the
+/// file changed) if the file appeared while the write was in flight.
 async fn rewrite(
     inv: &Invocation<'_>,
     at: &Holding,
     query: &str,
     thing: &str,
-    if_match: &str,
+    if_match: Option<&str>,
 ) -> Result<()> {
     let turtle = construct(inv, query, &at.atom, at.bindings(thing)).await?;
-    let write = Request::new(Verb::Sink, iri(&at.file))
-        .with_arg("content", ArgRef::Inline(turtle.into_bytes()))
-        .with_arg("if-match", ArgRef::Inline(if_match.as_bytes().to_vec()));
+    let mut write = Request::new(Verb::Sink, iri(&at.file))
+        .with_arg("content", ArgRef::Inline(turtle.into_bytes()));
+    if let Some(id) = if_match {
+        write = write.with_arg("if-match", ArgRef::Inline(id.as_bytes().to_vec()));
+    }
     inv.issue(write).await?;
     Ok(())
 }
@@ -257,8 +264,16 @@ async fn rewrite(
 async fn put(inv: &Invocation<'_>, at: &Holding, thing: &str, key: &str) -> Result<()> {
     for _ in 0..ATTEMPTS {
         let id = version(inv, at).await?;
-        match rewrite(inv, at, "put", thing, &id).await {
+        match rewrite(inv, at, "put", thing, id.as_deref()).await {
             Err(Error::Conflict(_)) => continue,
+            // Creating the file, which another writer created first: `ikigai-fs` refuses to
+            // replace a file that appeared while the write was in flight, so read it again.
+            Err(e @ Error::Endpoint(_)) if id.is_none() => {
+                if version(inv, at).await?.is_some() {
+                    continue;
+                }
+                return Err(e);
+            }
             done => return done,
         }
     }
@@ -274,11 +289,14 @@ async fn remove(inv: &Invocation<'_>, at: &Holding, thing: &str) -> Result<bool>
     for _ in 0..ATTEMPTS {
         // The version first, then whether the thing is in it: a later version than the one
         // read fails the `if-match` below, so the removal is judged on what it rewrites.
-        let id = version(inv, at).await?;
+        let Some(id) = version(inv, at).await? else {
+            // No file: it holds nothing, so the thing is not there.
+            return Ok(false);
+        };
         if !holds(inv, at, thing).await? {
             return Ok(false);
         }
-        match rewrite(inv, at, "remove", thing, &id).await {
+        match rewrite(inv, at, "remove", thing, Some(&id)).await {
             Err(Error::Conflict(_)) => continue,
             Err(e) => return Err(e),
             Ok(()) => return Ok(true),

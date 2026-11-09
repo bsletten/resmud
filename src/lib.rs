@@ -8,6 +8,9 @@
 //!
 //! - [`edge`]: `go`, `take` and `drop`, each of which rewrites the atoms a move touches (one
 //!   for `go`, two for `take` and `drop`) or refuses;
+//! - the atoms of where things are (what a room contains, what a character carries), read
+//!   by code because a file that is not there reads as an empty graph, on that file's own
+//!   NotFound only, which no composition can say;
 //! - [`runner`]: the verb runner, which checks a verb's signature, clamps it to its author's
 //!   grant, validates the patch against the realm's shapes and writes it;
 //! - [`query`]: one adapter, `urn:resmud:query`, that binds a NAME into a stored SPARQL query
@@ -26,6 +29,7 @@
 
 pub mod door;
 pub mod edge;
+mod holding;
 mod plain;
 pub mod query;
 pub mod runner;
@@ -195,8 +199,10 @@ fn template(s: &str) -> UriTemplate {
 /// The realm's resource map: every name the design lists, as an alias table.
 ///
 /// - **Atoms** are files, each reached by a Source-only view, so no caller can write an atom
-///   by its public name: `urn:resmud:room:id:{room}` reads `room/{room}.ttl`, and what the
-///   room contains, `urn:resmud:room:id:{room}:content`, reads `content/{room}.ttl`.
+///   by its public name: `urn:resmud:room:id:{room}` reads `room/{room}.ttl`. What a room
+///   contains (`urn:resmud:room:id:{room}:content`, `content/{room}.ttl`) and what a
+///   character carries are not in this table: they are read by code bound in
+///   [`realm_space`], which answers an empty graph for a file that is not there.
 /// - **Verb sources** (`:source`, `:signature`, `:author`) forward every verb, so a player
 ///   publishes a verb by writing them; nothing else about a verb is writable.
 /// - **Compositions** are named requests onto `urn:resmud:query` (a stored query with one name
@@ -244,16 +250,9 @@ pub fn resource_map(realm: &Realm) -> Result<AliasTable, DeclarationError> {
             "urn:resmud:character:id:{character}",
             "urn:file:character/{character}.ttl",
         ),
-        // Where things are: what each room contains, and what each character carries, each
-        // an atom of its own, so a move rewrites only the two it touches.
-        view(
-            "urn:resmud:room:id:{room}:content",
-            "urn:file:content/{room}.ttl",
-        ),
-        view(
-            "urn:resmud:character:id:{character}:carries",
-            "urn:file:carries/{character}.ttl",
-        ),
+        // Where things are (what each room contains, what each character carries) is not a
+        // view here: `holding` reads those files, and answers an empty graph for a file that
+        // is not there (see `realm_space`).
         view(
             "urn:resmud:author:id:{author}",
             "urn:file:author/{author}.ttl",
@@ -395,8 +394,23 @@ pub fn realm_space(realm: &Realm) -> Result<Arc<dyn Space>, DeclarationError> {
             template("urn:resmud:verb:id:{verb}"),
             runner::runner(realm.clone()),
         );
+    // Where things are: what each room contains, and what each character carries, each an
+    // atom of its own, so a move rewrites only the two it touches. A file that is not there
+    // reads as empty, on its own NotFound only (`holding`). Tried before the resource map,
+    // whose room and character views (`urn:resmud:room:id:{room}`) would otherwise take
+    // `kitchen:content` as a room's key.
+    let holding = EndpointSpace::new()
+        .bind(
+            template("urn:resmud:room:id:{room}:content"),
+            holding::holding("content", "room"),
+        )
+        .bind(
+            template("urn:resmud:character:id:{character}:carries"),
+            holding::holding("carries", "character"),
+        );
     let atoms: Arc<dyn Space> = Arc::new(ikigai_fs::cacheable_space(realm.root()));
     let inner = Fallback::new(vec![
+        Arc::new(holding),
         Arc::new(Alias::new(Arc::new(resource_map(realm)?), Arc::new(code))),
         atoms,
     ]);
