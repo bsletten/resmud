@@ -38,9 +38,9 @@ directory is `realm/first/`.
 | world | `urn:resmud:world` | **atom** (`world.txt`, a list of names) | the realm's atoms, the contents and carries atoms included. The union is `urn:sparql:*`'s own: each listed graph is loaded and the default graph is their union. No question the game asks reads it any more; a verb that creates an atom adds it here |
 | place | `urn:resmud:character:id:{character}:place` | composition | the stored `place` query over the character's atom alone; answers the room's key |
 | carried graphs | `urn:resmud:character:id:{character}:carries:graph` | composition | the stored `carries-graph` query over the carries atom alone: that atom's name and the name of each thing it lists, one per line |
-| inventory | `urn:resmud:character:id:{character}:inventory` | composition | the stored `inventory` query over the carried graphs: the carries atom and the things in it, never the world |
+| inventory | `urn:resmud:character:id:{character}:inventory` | composition | the stored `inventory` query over the carried graphs: the carries atom and the things in it, never the world; one sentence per thing, by label and then by name |
 | contents graphs | `urn:resmud:room:id:{room}:content:graph` | composition | the stored `content-graph` query over the contents atom alone: that atom's name and the name of each thing it lists |
-| room parts | `urn:resmud:room:id:{room}:description`, `…:exit`, `…:content:line` | composition | stored queries: description and exits over the room's atom alone; the contents line over the contents graphs (the contents atom and the things in it, never the world) |
+| room parts | `urn:resmud:room:id:{room}:description`, `…:exit`, `…:content:line` | composition | stored queries: description and exits over the room's atom alone; the contents line over the contents graphs (the contents atom and the things in it, never the world), one sentence per thing, by label and then by name |
 | thing description | `urn:resmud:thing:id:{thing}:description` | composition | the stored `description` query over the thing's atom alone |
 | room text | `urn:resmud:view:room:id:{room}` | composition | `urn:iki:fn:compose` fills the `room` template with the three room parts; `text/plain` |
 | look | `urn:resmud:look` | **alias rule** in the personal corridor | → `urn:resmud:character:id:{character}:look`, which fills the `look` template with the room text and the inventory. The room is a reference to the character's place, which the kernel settles to the place's answer, so no code reads it |
@@ -149,7 +149,8 @@ plays them against the kernel.
   takes a query's variables only as a JSON object (`bindings=`), and nothing in between builds that
   object. Splicing the name into the query text would be the injection `bindings=` exists to
   prevent. So the adapter takes `subject` as a name (`xsd:anyURI`), binds it as `?subject`, and
-  answers the `?line` column as plain text, one value per line. It answers text itself because
+  answers the `?line` column as plain text, one value per line, in the query's own order (or
+  joined by `separator`: the contents and inventory lines join their sentences with a space). It answers text itself because
   there is no `text/plain` SPARQL results format, and `ikigai-fn`'s `each` HTML-escapes every value
   it splices, which would put `&#39;` into a text face. It reads nothing itself, so it is exactly as
   cacheable as what it read. A named request that could bind a capture as a SPARQL term, plus a
