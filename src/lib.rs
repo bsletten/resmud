@@ -19,6 +19,8 @@
 //! - [`refusal`]: what a player reads when a request is refused, one plain sentence, mapped
 //!   at the edge because some refusals are the kernel's own and name resources by IRI
 //!   ([`refusal_with_help`] for a door with a word for what you can do here);
+//! - `sight`: what `look` and a name says, which is a refusal for anything the looker does not
+//!   see, and the list of the realm's characters that what a character sees is built from;
 //! - [`door`]: the first door, the `ikigai` REPL (`ikigai-engine`) opened for one player, which
 //!   maps the player's words (`look`, `go east`, `polish lamp`) to REPL lines and shows every
 //!   refusal as [`refusal`] of it.
@@ -33,6 +35,7 @@ mod holding;
 mod plain;
 pub mod query;
 pub mod runner;
+mod sight;
 mod text;
 
 pub use plain::{is_plain, refusal, refusal_with_help};
@@ -304,6 +307,48 @@ pub fn resource_map(realm: &Realm) -> Result<AliasTable, DeclarationError> {
         )
         .fixing(FixedArgument::value("separator", " ")),
         query_atom(
+            "urn:resmud:character:id:{character}:description",
+            "description",
+            "urn:resmud:character:id:{character}",
+        ),
+        // The graphs what a character sees is read from: its own place's contents atom, what
+        // it carries, and the atom of every character of the realm (a character's place is
+        // said by its own atom alone, so who is here is a question over all of them).
+        TopologyRule::named_template(
+            "urn:resmud:character:id:{character}:sees:graph",
+            "urn:iki:fn:compose",
+        )
+        .verb(Verb::Source)
+        .fixing(FixedArgument::value(
+            "src",
+            "urn:resmud:template:id:sees-graph",
+        ))
+        .fixing(FixedArgument::capture("character", "character"))
+        .fixing(FixedArgument::reference_template(
+            "room",
+            template("urn:resmud:character:id:{character}:place"),
+        )),
+        // What a character can see: its room, what is in it, who is there and what it carries,
+        // one name per line. The one resource `look` and a name reads, so a corridor can rebind
+        // or extend it for one character (remote viewing) without changing the realm's rule.
+        query_over(
+            "urn:resmud:character:id:{character}:sees",
+            "sees",
+            "urn:resmud:character:id:{character}",
+            "urn:resmud:character:id:{character}:sees:graph",
+        ),
+        // Look at one name: its description, if the character sees it (`sight`).
+        TopologyRule::named_template(
+            "urn:resmud:character:id:{character}:look:name:{name}",
+            "urn:resmud:seen",
+        )
+        .verb(Verb::Source)
+        .fixing(FixedArgument::capture("name", "name"))
+        .fixing(FixedArgument::reference_template(
+            "sees",
+            template("urn:resmud:character:id:{character}:sees"),
+        )),
+        query_atom(
             "urn:resmud:room:id:{room}:description",
             "description",
             "urn:resmud:room:id:{room}",
@@ -390,6 +435,11 @@ pub fn realm_space(realm: &Realm) -> Result<Arc<dyn Space>, DeclarationError> {
             text::templates(),
         )
         .bind(Exact::new("urn:resmud:query"), query::binder())
+        .bind(Exact::new("urn:resmud:seen"), sight::seen())
+        .bind(
+            Exact::new("urn:resmud:world:character"),
+            sight::characters(),
+        )
         .bind(Exact::new("urn:resmud:verb:name:go"), edge::go())
         .bind(Exact::new("urn:resmud:verb:name:take"), edge::take())
         .bind(Exact::new("urn:resmud:verb:name:drop"), edge::drop())
@@ -454,13 +504,19 @@ pub fn character_iri(key: &str) -> String {
 }
 
 /// The personal corridor of the player playing `character`: `urn:resmud:look` there means
-/// *here, for me*, the look of that character. A door that authenticates a player injects
-/// it on every request (`Kernel::issue_in`).
+/// *here, for me*, the look of that character, and `urn:resmud:look:name:{name}` means the
+/// thing, room or character of that name, if that character sees it. A door that authenticates
+/// a player injects it on every request (`Kernel::issue_in`).
 pub fn corridor(character: &str) -> Scope {
-    let table = AliasTable::new().exact_at_root(
-        "urn:resmud:look",
-        format!("{}:look", character_iri(character)),
-    );
+    let table = AliasTable::new()
+        .exact_at_root(
+            "urn:resmud:look",
+            format!("{}:look", character_iri(character)),
+        )
+        .prefix_at_root(
+            "urn:resmud:look:name:",
+            format!("{}:look:name:", character_iri(character)),
+        );
     Scope::empty().with_named(
         iri(&format!("urn:resmud:corridor:character:id:{character}")),
         Arc::new(Alias::new(Arc::new(table), Arc::new(EndpointSpace::new()))),

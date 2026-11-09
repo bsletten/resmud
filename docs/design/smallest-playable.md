@@ -42,6 +42,12 @@ directory is `realm/first/`.
 | contents graphs | `urn:resmud:room:id:{room}:content:graph` | composition | the stored `content-graph` query over the contents atom alone: that atom's name and the name of each thing it lists |
 | room parts | `urn:resmud:room:id:{room}:description`, `…:exit`, `…:content:line` | composition | stored queries: description and exits over the room's atom alone; the contents line over the contents graphs (the contents atom and the things in it, never the world), one sentence per thing, by label and then by name |
 | thing description | `urn:resmud:thing:id:{thing}:description` | composition | the stored `description` query over the thing's atom alone |
+| character description | `urn:resmud:character:id:{character}:description` | composition | the stored `description` query over the character's atom alone |
+| what a character sees | `urn:resmud:character:id:{character}:sees` | composition | the stored `sees` query over `…:sees:graph`: the room it is in, what that room contains, the characters there (itself included) and what it carries, one name per line. The ONE resource `look` and a name reads; see [What a character sees](#what-a-character-sees) |
+| sight graphs | `urn:resmud:character:id:{character}:sees:graph` | composition | the `sees-graph` template: the character's atom and carries atom, its place's contents atom, and every character the world lists |
+| characters | `urn:resmud:world:character` | code | the character names `urn:resmud:world` lists, one per line |
+| look at a name | `urn:resmud:character:id:{character}:look:name:{name}` | named request | `urn:resmud:seen`, given the name and what the character sees |
+| seen | `urn:resmud:seen` | **refusing view** (code) | the description of the thing, character or room of that name in `sees`, or `You see no lamp here.` for every other name |
 | room text | `urn:resmud:view:room:id:{room}` | composition | `urn:iki:fn:compose` fills the `room` template with the three room parts; `text/plain` |
 | look | `urn:resmud:look` | **alias rule** in the personal corridor | → `urn:resmud:character:id:{character}:look`, which fills the `look` template with the room text and the inventory. The room is a reference to the character's place, which the kernel settles to the place's answer, so no code reads it |
 | manifold | `urn:resmud:manifold` | named request | `urn:kernel:actions` as Turtle, under the caller's capability |
@@ -61,15 +67,15 @@ The local terms (`rml:` = `urn:resmud:term:name:`) are `rml:grant`, `rml:key`, `
 them a published home. The plan's placeholder `urn:resmud:argument:name:target` names the thing a
 verb is run on.
 
-Of the realm's 33 names, 24 are rules over other names and 9 are code. The two atoms of where
-things are moved from views to code with resmud#57, so that a missing one reads as empty. `urn:resmud:look` is not
-counted, because it lives in the personal corridor.
+Of the realm's 39 names, 28 are rules over other names and 11 are code. The two atoms of where
+things are moved from views to code with resmud#57, so that a missing one reads as empty. `urn:resmud:look` and
+`urn:resmud:look:name:{name}` are not counted, because they live in the personal corridor.
 
 ### Spaces
 
 - **Personal corridor.** `resmud::corridor(character)` is a named scope whose alias maps
   `urn:resmud:look` to that character's look, so `look` takes no argument: it means *here, for
-  me*. A door injects it on every request (`Kernel::issue_in`). A player's principal is their
+  me*, and `urn:resmud:look:name:{name}` to that character's look at one name. A door injects it on every request (`Kernel::issue_in`). A player's principal is their
   character's own name, so the edges read the actor from the capability.
 - **Realm corridor: not built as a corridor.** The one realm is the kernel's root space, mounted at
   `urn:resmud:`. A second realm would be a second scope over the same names.
@@ -98,7 +104,7 @@ and maps each, as text, to the REPL line that names an existing resource:
 | a player types | the door issues |
 |---|---|
 | `look` | `source urn:resmud:look` |
-| `look lamp` | `source urn:resmud:thing:id:lamp:description` |
+| `look lamp` | `source urn:resmud:look:name:lamp` |
 | `help` or `what` | `source urn:resmud:affordance` |
 | `go east`, `take lamp`, `drop lamp` | `sink urn:resmud:verb:name:{go,take,drop} …` |
 | `polish lamp` (any other first word) | `sink urn:resmud:verb:id:polish lamp` |
@@ -142,6 +148,10 @@ plays them against the kernel.
   and it falls back on any failure of its marker, a denial included, so a reader who may not read
   the file would be told the room is empty. These two are bound before the resource map, whose
   room and character views would otherwise take `kitchen:content` as a room's key.
+- **What a character looks at** (`src/sight.rs`): `urn:resmud:seen` says *no*, the same way for a
+  thing in another room as for a name that exists nowhere, which no composition can; and
+  `urn:resmud:world:character` keeps the character lines of `urn:resmud:world`, a text list,
+  because nothing in a named request filters lines.
 - **The query adapter** (`urn:resmud:query`, `src/query.rs`): every question the game asks (where am
   I, what is here, where the east exit goes) is a stored query with one name in it, bound at a name
   like `urn:resmud:room:id:{room}:exit`. A named request can fix an argument as a value, a
@@ -193,7 +203,8 @@ Building it showed the first design was wrong, or silent, in six places:
   [Decided: option 1](#decided-option-1-a-contents-atom-per-room).
 - **A character's place stays in its own atom.** Characters are not listed in a room's contents
   atom, so `go` stays one write and a character's place reads one atom. The cost is that "who is
-  here" is not a question over one atom; nothing asks it yet.
+  here" is not a question over one atom, and `…:sees` (resmud#56) pays it by reading every
+  character's atom; see [What a character sees](#what-a-character-sees).
 - **A verb can place a thing it creates.** The runner names the atom a plan triple writes by its
   subject, except a triple that places a thing: `<room> rms:contains <thing>` writes the room's
   contents atom and `<character> rm:carries <thing>` the character's carries atom. So a grant can
@@ -249,7 +260,9 @@ atom by its subject, the room.
   read one of them recomputes on its next read; nothing else does:
   - after a `take` or a `drop`: the room's contents line and room text, and the mover's inventory
     (the room's contents atom and the mover's carries atom);
-  - after a `go`: the mover's place, and so their look.
+  - after a `go`: the mover's place, and so their look; and what EVERY character sees, because
+    who is here reads every character's atom (see
+    [What a character sees](#what-a-character-sees)).
 
   Every other room, its text included, every other inventory, and the moved thing's own description
   stay cached. A verb that rewrites a thing also recomputes the contents line of the room it is in
@@ -274,6 +287,7 @@ atom by its subject, the room.
 | a direction, thing or verb that is not a name | **InvalidArgument** |
 | a caller who plays no character, or a principal that is not a character | **Denied** |
 | a move or a verb without `urn:cap:resmud:play` or `urn:cap:resmud:verb:run` | **Denied**, by the declared capability floor |
+| `look` and a name the looker does not see, whether it exists elsewhere or nowhere | **NotFound**: "You see no lamp here." |
 | a verb nobody published (`dance`), checked before its author or its thing | **NotFound**: "There is no verb called dance." |
 | a verb whose signature fails, or that names no author or an unknown one | **Denied** |
 | a verb that writes what its author's grant and its caller's capability together do not cover | **Denied** |
@@ -390,6 +404,36 @@ first build's realm shape:
   every room needs about 6,000 cache entries, above the default bound of 4,096 (see
   [Economics](#economics)). With a bound that evicts nothing it is 8 µs.
 
-**For resmud#56** (should `look X` see only what is here): option 1 makes it cheap. Whether a thing
-is here is now a question over two small atoms, the room's contents and the player's carries,
-instead of the world, so the door's `look X` can check them before describing the thing.
+**For resmud#56** (should `look X` see only what is here): option 1 made it cheap, and it is built;
+see [What a character sees](#what-a-character-sees).
+
+## What a character sees
+
+**Decided by Brian on 2026-11-08 (resmud#56), and built.** Without magical or assistive technology,
+a character can look only at what is with it. `urn:resmud:character:id:{c}:sees` names exactly
+that: the room the character is in, what that room contains (its contents atom, and the characters
+whose own atoms place them there, the looker included), and what the character carries. It is one
+cacheable resource, and `look` and a name goes through it: `look lamp` at the door is
+`urn:resmud:look:name:lamp` in the player's corridor, then
+`urn:resmud:character:id:{c}:look:name:lamp`, then `urn:resmud:seen` with the character's `sees`,
+which answers the description of what is listed by that name. A name it does not list gets the one
+refusal, `You see no lamp here.`, so `look` cannot tell a thing elsewhere from a thing nowhere.
+`tests/sight.rs` pins this, two worlds compared byte for byte.
+
+- **The thing, the character, then the room,** where a name is shared: a thing, because that is
+  what `look` read before it could name anything else.
+- **Bare `look` is unchanged.** It reads the character's place and that room's text directly: it
+  says where you are, and binoculars do not move you.
+- **What a move recomputes.** `sees` reads the character's atom and carries atom, the contents atom
+  of its own room, and every character's atom. A `take` or a `drop` recomputes the `sees` of the
+  mover and of whoever else shares the room, and no one else's. A `go` recomputes every character's
+  `sees`, everywhere, lazily on their next `look` and a name, because a character's place is said
+  only by its own atom, so "who is here" has no room-sized atom to hang from
+  (`tests/sight.rs`, `a_take_or_a_drop_recomputes_only_what_read_the_atoms_it_wrote`). A presence atom
+  per room would confine a `go` to the two rooms it touches, and would make `go` a three-atom write
+  like `take`; it is not built, because this build chose one write for `go`.
+- **Remote viewing is a separate item, and this is its seam.** Because what a character sees is one
+  resource and `urn:resmud:seen` reads nothing else about where things are, a space that a magic
+  eye, a camera or binoculars switches on for one character can rebind or extend `…:sees` for that
+  character, layered over the realm's rule rather than changing it. `tests/sight.rs` pins this with
+  a corridor that rebinds it.
