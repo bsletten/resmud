@@ -21,7 +21,9 @@
 //! 4. **The shapes**: each rewritten atom (the stored `patch` CONSTRUCT) is checked against
 //!    the realm's shapes in a corridor holding only the candidate and the shapes (the stored
 //!    `validate` query). A violation is `InvalidArgument`, naming the thing and the rule.
-//! 5. **The write**: every atom, under the clamp. A new atom also joins the world's list.
+//! 5. **The write**: every atom, under the clamp. A new atom also joins the world's list. A
+//!    room or a character the verb creates gets its atom of where things are too (the room's
+//!    contents, what the character carries), written after it, so the clamp must cover both.
 //!
 //! Every refusal names things by the word a player sees (the verb's name, its author's, `the
 //! lamp`), never by IRI. A signature's own verdict (which hash, which key) is not shown to a
@@ -71,6 +73,22 @@ impl Atom {
             )),
             _ => None,
         }
+    }
+
+    /// For a room or a character, the atom of where things are that goes with it: the
+    /// room's contents, or what the character carries. A verb that creates one creates the
+    /// other, so the realm never has to read a missing one as empty.
+    fn holding_atom(&self) -> Option<Atom> {
+        let (kind, name) = match self.kind.as_str() {
+            "room" => ("content", format!("{}:content", self.name)),
+            "character" => ("carries", format!("{}:carries", self.name)),
+            _ => return None,
+        };
+        Some(Atom {
+            kind: kind.to_string(),
+            key: self.key.clone(),
+            name,
+        })
     }
 
     /// What the refusal calls it: the key, or where the thing goes.
@@ -164,6 +182,18 @@ fn licensed(realm: &Realm, grant: &[String]) -> Vec<String> {
 async fn read_text(inv: &Invocation<'_>, name: &str) -> Result<String> {
     let answer = inv.source(&iri(name)).await?;
     Ok(String::from_utf8_lossy(&answer.bytes).trim().to_string())
+}
+
+/// Whether the realm keeps a file for `atom` yet. The file, not the atom's public name: a
+/// room's contents read as empty when their file is not there, but they do not exist yet.
+async fn exists(inv: &Invocation<'_>, atom: &Atom) -> Result<bool> {
+    inv.issue(Request::new(Verb::Exists, iri(&atom.file())))
+        .await
+        .map(|answer| answer.bytes == b"true")
+        .or_else(|e| match e {
+            Error::NotFound(_) => Ok(false),
+            e => Err(e),
+        })
 }
 
 /// Step 0: whether verb `verb` was published, which is whether its source exists. A verb
@@ -344,7 +374,7 @@ pub fn runner(realm: Realm) -> AsyncFnEndpoint {
                 },
                 e => e,
             })?;
-            let atoms = subjects
+            let mut atoms = subjects
                 .iter()
                 .map(|s| atom_of(&verb, s))
                 .collect::<Result<Vec<_>>>()?;
@@ -354,6 +384,18 @@ pub fn runner(realm: Realm) -> AsyncFnEndpoint {
                     detail: format!("the verb {verb} changes nothing"),
                 });
             }
+            // A room or a character the verb creates comes with its atom of where things are
+            // (an empty one, unless the plan places something there), so it is a write like
+            // any other: the clamp below must cover it too.
+            let mut implied = Vec::new();
+            for atom in &atoms {
+                if let Some(holding) = atom.holding_atom() {
+                    if !atoms.iter().any(|a| a.name == holding.name) && !exists(inv, atom).await? {
+                        implied.push(holding);
+                    }
+                }
+            }
+            atoms.extend(implied);
             for atom in &atoms {
                 let token = format!("{CAP_WRITE_PREFIX}{}", atom.kind);
                 if !clamp.allows(&token) {
@@ -370,14 +412,7 @@ pub fn runner(realm: Realm) -> AsyncFnEndpoint {
             let shapes = inv.source(&iri(&realm.shape_iri())).await?.bytes;
             let mut written = Vec::new();
             for atom in atoms {
-                let exists = inv
-                    .issue(Request::new(Verb::Exists, iri(&atom.name)))
-                    .await
-                    .map(|answer| answer.bytes == b"true")
-                    .or_else(|e| match e {
-                        Error::NotFound(_) => Ok(false),
-                        e => Err(e),
-                    })?;
+                let exists = exists(inv, &atom).await?;
                 let graph = if exists {
                     format!("{plan} {}", atom.name)
                 } else {

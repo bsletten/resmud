@@ -30,10 +30,10 @@ directory is `realm/first/`.
 | realm | `urn:resmud:realm:id:{realm}` | **atom** (`realm.ttl`) | the realm's label, the IRI of its shapes, and the actions its manifold allows (`rml:allows`, each with the door pattern it matches and the line the affordance list shows) |
 | realm shapes | `urn:resmud:realm:id:{realm}:shape` | **atom** (`shape.ttl`) | SHACL: what may exist here. The first rule is the accessibility floor: every item, character and room has an `rm:description` |
 | room | `urn:resmud:room:id:{room}` | **atom** (`room/{room}.ttl`) | `rms:Room`, its label, `rm:description`, its exits (`rms:exit` → `rms:bearing`, `rms:leadsTo`). It does **not** say what it contains |
-| room contents | `urn:resmud:room:id:{room}:content` | **atom** (`content/{room}.ttl`) | what lies in the room: one `<room> rms:contains <thing>` triple per thing. Things only: a character's place stays in its own atom |
+| room contents | `urn:resmud:room:id:{room}:content` | **atom** (`content/{room}.ttl`), read by code | what lies in the room: one `<room> rms:contains <thing>` triple per thing. Things only: a character's place stays in its own atom. A file that is not there reads as an empty graph (see [Missing holding atoms](#missing-holding-atoms)) |
 | thing | `urn:resmud:thing:id:{thing}` | **atom** (`thing/{thing}.ttl`) | `rm:Item`, its label, `rm:description`. It says **nothing** about where it is, so a move never rewrites it |
 | character | `urn:resmud:character:id:{character}` | **atom** (`character/{character}.ttl`) | `rm:Character`, its label, `rm:description`, and where it is (`<room> rms:contains <character>`). It does **not** list what it carries |
-| carried things | `urn:resmud:character:id:{character}:carries` | **atom** (`carries/{character}.ttl`) | what the character carries: one `<character> rm:carries <thing>` triple per thing |
+| carried things | `urn:resmud:character:id:{character}:carries` | **atom** (`carries/{character}.ttl`), read by code | what the character carries: one `<character> rm:carries <thing>` triple per thing. A file that is not there reads as an empty graph |
 | author | `urn:resmud:author:id:{author}`, `…:key` | **atom** (`author/{author}.ttl`, `author/{author}.pub.pem`) | the author's registered key (`rml:key`) and the grant their verbs run under (`rml:grant`, game tokens such as `urn:cap:resmud:write:thing`) |
 | world | `urn:resmud:world` | **atom** (`world.txt`, a list of names) | the realm's atoms, the contents and carries atoms included. The union is `urn:sparql:*`'s own: each listed graph is loaded and the default graph is their union. No question the game asks reads it any more; a verb that creates an atom adds it here |
 | place | `urn:resmud:character:id:{character}:place` | composition | the stored `place` query over the character's atom alone; answers the room's key |
@@ -61,7 +61,8 @@ The local terms (`rml:` = `urn:resmud:term:name:`) are `rml:grant`, `rml:key`, `
 them a published home. The plan's placeholder `urn:resmud:argument:name:target` names the thing a
 verb is run on.
 
-Of the realm's 33 names, 26 are rules over other names and 7 are code. `urn:resmud:look` is not
+Of the realm's 33 names, 24 are rules over other names and 9 are code. The two atoms of where
+things are moved from views to code with resmud#57, so that a missing one reads as empty. `urn:resmud:look` is not
 counted, because it lives in the personal corridor.
 
 ### Spaces
@@ -133,6 +134,14 @@ plays them against the kernel.
   stands for under the realm's directory, then attenuates the caller's capability to that set. The
   verb runs under no more than both hold, and the file write runs under the clamp, so `ikigai-fs`'s
   path ACL refuses a second time.
+- **The atoms of where things are** (`src/holding.rs`): a room's contents and what a character
+  carries are views onto their files like every other atom, except that a file that is not there
+  reads as an empty graph. The fallback is taken on the file's own NotFound and nothing else, so
+  the empty answer hangs from that file's thread and the write that creates the file recomputes
+  whatever read it; a denial still fails. `urn:iki:fn:compose`'s `||` is the nearest composition,
+  and it falls back on any failure of its marker, a denial included, so a reader who may not read
+  the file would be told the room is empty. These two are bound before the resource map, whose
+  room and character views would otherwise take `kitchen:content` as a room's key.
 - **The query adapter** (`urn:resmud:query`, `src/query.rs`): every question the game asks (where am
   I, what is here, where the east exit goes) is a stored query with one name in it, bound at a name
   like `urn:resmud:room:id:{room}:exit`. A named request can fix an argument as a value, a
@@ -192,6 +201,11 @@ Building it showed the first design was wrong, or silent, in six places:
   thing out of a room stays the moves' job. The runner writes a created thing before the atom that
   places it, so a failure between them leaves a thing nowhere, never a room listing a thing that
   does not exist (`tests/play.rs`, `a_verb_can_create_a_thing_and_place_it_here`).
+- **A missing holding atom reads as empty, and the game never leaves one missing** (resmud#57).
+  After resmud#52, a room with no `content/{room}.ttl` or a character with no `carries/{c}.ttl`
+  made `look` fail with NotFound, and a verb that created a room did not create its contents. Both
+  halves are built, because each covers what the other cannot. See
+  [Missing holding atoms](#missing-holding-atoms).
 - **Two rooms, not one,** because an exit has to lead somewhere: a kitchen, and a garden east of
   it.
 - **The author has an atom.** The design did not say where a verb's author is recorded. As built, a
@@ -203,6 +217,27 @@ Building it showed the first design was wrong, or silent, in six places:
   write through the kernel cuts exactly that file's thread. But `ikigai-fs` 0.4.0 has no watcher,
   so an edit made outside the kernel (an operator changing a room's file by hand) is not seen until
   something cuts its thread. The decision below assumed a watcher.
+
+## Missing holding atoms
+
+A realm written by hand, or one from before resmud#52, can lack a room's contents atom or a
+character's carries atom. Two rules cover it (`tests/holding.rs`):
+
+- **It reads as empty.** The atom's public name answers an empty graph when its file is not
+  there, on that file's own NotFound only: a room nobody wrote holds nothing and a character
+  carries nothing, while a room or a thing with no atom of its own is still not there, and a
+  reader who may not read the file is still refused. The empty answer is cached, hanging from the
+  file's thread, and the first write that creates the file cuts it.
+- **The game creates it.** A verb that creates a room writes the room's contents atom after the
+  room, and one that creates a character writes its carries atom after the character: empty, or
+  holding what the plan places there. Each is a write like any other, so the author's grant and
+  the caller's capability must cover both: creating a room needs `urn:cap:resmud:write:room` and
+  `urn:cap:resmud:write:content`, or the verb is refused before anything is written. The first
+  take or drop into a room or character with no holding atom creates it.
+
+A verb that creates a character cannot yet say where it is: a character's place is the triple
+`<room> rms:contains <character>` in the character's own atom, and the runner names a triple's
+atom by its subject, the room.
 
 ## Economics
 
@@ -315,6 +350,13 @@ transaction. So:
   stale (two kernels on one realm directory, which the design does not do) fails every `if-match`
   and refuses the move after four attempts, rather than writing over that process's change.
   A store with transactions (`ikigai-store`, once it is on core 0.3) would make the move one write.
+- **Creating a holding atom is not compared.** The first move into a room or character with no
+  holding atom writes the file without `if-match`, since there is no version to name. `ikigai-fs`
+  refuses the write if the file appears while the write is in flight, and the move then reads it
+  again. But if another writer creates the file between this move's read and its write,
+  the write replaces it, and a thing that writer placed is lost. `ikigai-fs` 0.4.1 has no
+  create-only condition (an `if-none-match`), which would close that window. The game itself
+  creates a holding atom with every room and character, so only a realm missing one meets it.
 
 ## Decided: option 1, a contents atom per room
 
