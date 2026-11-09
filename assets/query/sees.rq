@@ -1,0 +1,25 @@
+# What a character can see, one name per line: the room it is in, everything that room
+# contains (the things in its contents atom and the characters whose own atoms place them
+# there, the looker included), and what it carries. Run over the character's `:sees:graph`,
+# so it never reads a room the character is not in, or another character's carries atom.
+PREFIX rm:  <https://iriref.org/resmud/core#>
+PREFIX rms: <https://iriref.org/resmud/space#>
+SELECT DISTINCT ?line ?subject WHERE {
+  {
+    ?room rms:contains ?subject .
+    FILTER(STRSTARTS(STR(?room), "urn:resmud:room:id:"))
+    BIND(STR(?room) AS ?line)
+  }
+  UNION
+  {
+    ?room rms:contains ?subject , ?there .
+    FILTER(STRSTARTS(STR(?room), "urn:resmud:room:id:"))
+    BIND(STR(?there) AS ?line)
+  }
+  UNION
+  {
+    ?subject rm:carries ?thing .
+    BIND(STR(?thing) AS ?line)
+  }
+}
+ORDER BY ?line

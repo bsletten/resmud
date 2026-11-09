@@ -40,7 +40,7 @@ emits, as `text/plain; charset=utf-8`:
 - **The door** (`resmud::door`, run by `cargo run --example door`): the `ikigai` REPL opened
   for one player. It shows a prompt (`> `), reads a line, and prints the answer or the refusal
   as lines of plain text. It takes the words the affordance list and the refusals teach:
-  `look`; `look` and a thing (`look lamp`, the thing's description); `help` or `what` (what you
+  `look`; `look` and a name (`look lamp`, the description of a thing, a character or the room, if you can see it); `help` or `what` (what you
   can do here); `go east`, `take lamp`, `drop lamp`; a verb a player wrote and a thing
   (`polish lamp`); `quit`. The door's own words are read in any case (`Look`, `LOOK`). It also takes the REPL's own
   `source`, `sink` and `exists` lines (`source urn:resmud:look`). The example's one greeting
@@ -140,11 +140,10 @@ What the build now holds, and how:
 - **Only the door's own words are read in any case.** A verb a player wrote, a thing and a
   direction are the realm's names, which are lowercase, so `Polish lamp`, `look Lamp` and
   `go East` are refused, each with a sentence saying how to spell it.
-- **`look lamp` describes the lamp wherever it is.** It reads the thing's description by name and
-  does not check that the thing is here, so a player can look at a thing in another room if they
-  know its name. Whether looking should be limited to what is here is a rule of the game the door
-  does not make. `look` and the name of a room or a character is not mapped (`There is nothing by
-  that name in this realm.`).
+- **`look lamp` is limited to what you can see; the REPL's own grammar is not.** `look` and a name
+  describes only what the looker sees, but the door also takes `source` lines, and
+  `source urn:resmud:thing:id:lamp:description` still answers wherever the lamp is. That is the
+  REPL's reach at the door, not a word a player is taught.
 - **The REPL's grammar at the door can narrow a session.** `sink urn:host:login …` (the engine's
   own login) lowers the session to what it names, and never above the player's capability; a
   player who does it is refused until `sink urn:host:logout`.
@@ -189,4 +188,5 @@ technology, if you are comfortable sharing them. Anything security-sensitive goe
 | 2026-11-07 | Refusals at the door name its word for what you can do here (`type help to see what you can do here`), through `resmud::refusal_with_help` (resmud#54). |
 | 2026-11-07 | `look` and a thing describes it, and the door's own words are read in any case (resmud#55). |
 | 2026-11-07 | Where things are moved into atoms of their own (resmud#52): a lost race and a move that stopped halfway each say so in a sentence, and a thing is never lost silently. |
+| 2026-11-08 | `look` and a name describes only what the looker can see, a thing, a character or the room, and says `You see no lamp here.` for anything else, whether it exists elsewhere or nowhere (resmud#56). |
 | 2026-11-08 | A room's things and an inventory are listed by label, then by name, the same way every time; the limitation that they were in no promised order is gone (resmud#58). |

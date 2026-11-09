@@ -1,0 +1,4 @@
+urn:resmud:character:id:$h{{character}}
+urn:resmud:character:id:$h{{character}}:carries
+urn:resmud:room:id:$h{{room}}:content
+$r{urn:resmud:world:character}

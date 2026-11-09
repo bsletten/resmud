@@ -14,7 +14,7 @@
 //! | a player types | the door issues |
 //! |---|---|
 //! | `look` | `source urn:resmud:look` |
-//! | `look lamp` | `source urn:resmud:thing:id:lamp:description` (the thing's description) |
+//! | `look lamp` | `source urn:resmud:look:name:lamp` (described only if the player sees it) |
 //! | `help` or `what` | `source urn:resmud:affordance` (what you can do here) |
 //! | `go east`, `take lamp`, `drop lamp` | `sink urn:resmud:verb:name:{go,take,drop} …` |
 //! | `polish lamp` (any other first word) | `sink urn:resmud:verb:id:polish lamp`, a verb a player wrote |
@@ -158,13 +158,11 @@ fn words(line: &str) -> Words {
         "quit" if rest.is_empty() => Words::Quit,
         "quit" => Words::Alone(said),
         "look" if rest.is_empty() => Words::Line("source urn:resmud:look".into()),
-        // `look lamp`: the thing's description. Its name is checked as the realm checks a
-        // thing's name, so `look Lamp` is refused as `take Lamp` is, on every file system (a
-        // volume that folds case would otherwise answer it differently from one that does not).
+        // `look lamp`: what the player sees by that name, resolved through the looker in the
+        // player's corridor (`crate::sight`), never straight to the thing. Its name is checked
+        // as the realm checks a thing's name, so `look Lamp` is refused as `take Lamp` is.
         "look" if rest.contains(char::is_whitespace) => Words::Usage(LOOK_AT_ONE),
-        "look" if is_key(rest) => {
-            Words::Line(format!("source urn:resmud:thing:id:{rest}:description"))
-        }
+        "look" if is_key(rest) => Words::Line(format!("source urn:resmud:look:name:{rest}")),
         "look" => Words::NotAThing(rest.to_string()),
         w if w == HELP || w == "what" => alone("source urn:resmud:affordance"),
         w if MOVES.contains(&w) => with(format!("urn:resmud:verb:name:{w}")),
@@ -186,7 +184,7 @@ fn words(line: &str) -> Words {
 /// assert_eq!(request_line("source urn:resmud:look").as_deref(), Some("source urn:resmud:look"));
 /// assert_eq!(
 ///     request_line("look lamp").as_deref(),
-///     Some("source urn:resmud:thing:id:lamp:description")
+///     Some("source urn:resmud:look:name:lamp")
 /// );
 /// assert_eq!(request_line("LOOK").as_deref(), Some("source urn:resmud:look"));
 /// assert_eq!(request_line("look Lamp"), None);
@@ -522,14 +520,14 @@ mod tests {
     }
 
     #[test]
-    fn look_and_a_thing_is_the_things_description() {
+    fn look_and_a_name_resolves_through_the_looker() {
         assert_eq!(
             words("look lamp"),
-            Words::Line("source urn:resmud:thing:id:lamp:description".into())
+            Words::Line("source urn:resmud:look:name:lamp".into())
         );
         assert_eq!(
             words("Look  brass-lamp-2"),
-            Words::Line("source urn:resmud:thing:id:brass-lamp-2:description".into())
+            Words::Line("source urn:resmud:look:name:brass-lamp-2".into())
         );
         assert_eq!(words("look Lamp"), Words::NotAThing("Lamp".into()));
         assert_eq!(words("look lamp!"), Words::NotAThing("lamp!".into()));

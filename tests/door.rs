@@ -275,7 +275,7 @@ fn the_door_shows_a_refusal_never_the_error() {
             "look Lamp",
             "\"Lamp\" is not the name of a thing: say it the way look shows it, such as lamp.",
         ),
-        ("look zebra", "There is nothing by that name in this realm."),
+        ("look zebra", "You see no zebra here."),
         ("look at lamp", LOOK_AT_ONE),
         // Words the door gives no meaning beyond themselves.
         ("help me", "Say help on its own."),

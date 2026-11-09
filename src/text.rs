@@ -36,6 +36,7 @@ pub const QUERIES: &[(&str, &str)] = &[
     ("put", include_str!("../assets/query/put.rq")),
     ("relocate", include_str!("../assets/query/relocate.rq")),
     ("remove", include_str!("../assets/query/remove.rq")),
+    ("sees", include_str!("../assets/query/sees.rq")),
     ("subject", include_str!("../assets/query/subject.rq")),
     ("validate", include_str!("../assets/query/validate.rq")),
 ];
@@ -44,6 +45,10 @@ pub const QUERIES: &[(&str, &str)] = &[
 pub const TEMPLATES: &[(&str, &str)] = &[
     ("look", include_str!("../assets/template/look.txt")),
     ("room", include_str!("../assets/template/room.txt")),
+    (
+        "sees-graph",
+        include_str!("../assets/template/sees-graph.txt"),
+    ),
 ];
 
 fn served(
