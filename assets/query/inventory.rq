@@ -1,13 +1,22 @@
-# What a character carries, as sentences.
+# What a character carries, as sentences: one row per thing, by label and then by name, so
+# an inventory is said the same way every time (resmud#58). The query adapter joins the rows
+# with a space (`separator`), into one line. A character carrying nothing answers one row
+# saying so. The order is the outer ORDER BY's, the one order SPARQL promises.
 PREFIX rm:   <https://iriref.org/resmud/core#>
 PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-SELECT ?subject (IF(COUNT(?item) = 0, "You carry nothing.",
-                    GROUP_CONCAT(?entry; separator=" ")) AS ?line)
-WHERE {
-  OPTIONAL {
+SELECT ?line ?subject WHERE {
+  {
     ?subject rm:carries ?item .
     ?item rdfs:label ?label ; rm:description ?description .
-    BIND(CONCAT("You carry the ", ?label, ". ", ?description) AS ?entry)
+    BIND(CONCAT("You carry the ", ?label, ". ", ?description) AS ?line)
+  }
+  UNION
+  {
+    FILTER NOT EXISTS {
+      ?subject rm:carries ?any .
+      ?any rdfs:label ?anyLabel ; rm:description ?anyDescription .
+    }
+    BIND("You carry nothing." AS ?line)
   }
 }
-GROUP BY ?subject
+ORDER BY STR(?label) STR(?item)

@@ -11,7 +11,7 @@ conformance claim. Adapted from the [ACCESSIBILITY.md template](https://github.c
 | Status | Evaluation in progress. No conformance claim. |
 | Owner | the maintainers of this repository |
 | Report a barrier | [a GitHub issue](https://github.com/bsletten/resmud/issues/new?labels=accessibility) with the `accessibility` label; anything security-sensitive through [private vulnerability reporting](https://github.com/bsletten/resmud/security/advisories/new) |
-| Last reviewed | 2026-11-07 |
+| Last reviewed | 2026-11-08 |
 
 ## What it emits that people read
 
@@ -101,6 +101,11 @@ What the build now holds, and how:
   `a_failure_between_the_two_writes_leaves_the_thing_in_both_places_and_says_so`). Two players
   taking one thing at once end with exactly one holding it, and the other told why in plain words
   (`two_players_taking_one_thing_at_once_leave_exactly_one_holding_it`).
+- **A room and an inventory list their things in one order, every time.** The contents line and
+  the inventory line each list their things by label, and two things with the same label by their
+  names, so a screen-reader user hears the same room the same way on every look, whatever order
+  the things were put there in (`tests/play.rs`,
+  `a_room_and_an_inventory_list_their_things_by_label_then_by_name`).
 - **No angle brackets in what a player reads.** The affordance list says what each action takes in
   words (`go a direction`, `a verb a player wrote, then a thing`), and the plain-text test checks
   every answer of the text face, the affordance list included, with `resmud::is_plain`.
@@ -150,9 +155,6 @@ What the build now holds, and how:
   need not be in another.
 - **A signature's verdict is not shown to a player.** A tampered verb and one signed by someone
   else get the same sentence; which key or hash failed is in the verdict, not the refusal.
-- **A room's things are listed in no promised order.** A room holding two or more things lists
-  them on one line in whatever order the query answers, which can differ from one realm to
-  another; the stored query does not sort them.
 - **While a take or a drop is in flight, the thing is briefly listed in both places.** A look
   between the two writes sees it in the room and with the taker. The sentence a player reads after
   a lost race or a failed move is tested; what someone else sees during that moment is not.
@@ -187,3 +189,4 @@ technology, if you are comfortable sharing them. Anything security-sensitive goe
 | 2026-11-07 | Refusals at the door name its word for what you can do here (`type help to see what you can do here`), through `resmud::refusal_with_help` (resmud#54). |
 | 2026-11-07 | `look` and a thing describes it, and the door's own words are read in any case (resmud#55). |
 | 2026-11-07 | Where things are moved into atoms of their own (resmud#52): a lost race and a move that stopped halfway each say so in a sentence, and a thing is never lost silently. |
+| 2026-11-08 | A room's things and an inventory are listed by label, then by name, the same way every time; the limitation that they were in no promised order is gone (resmud#58). |

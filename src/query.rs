@@ -9,7 +9,8 @@
 //! query text would be the injection `bindings=` exists to prevent. So this endpoint does the
 //! one thing that is missing: it takes `subject` as a NAME (the kernel hands it the IRI's text,
 //! since the input is `xsd:anyURI`), binds it as `?subject`, runs the query, and answers the
-//! `?line` column, one value per line, with no trailing newline: the shape a text template
+//! `?line` column, one value per line (or joined by `separator`, a space for a line of
+//! sentences), in the query's own order, with no trailing newline: the shape a text template
 //! splices with `$r{…}`. It reads nothing itself; the query, the graphs and the answer all go
 //! through the kernel, so it is exactly as cacheable as what it read.
 
@@ -54,7 +55,13 @@ pub fn binder() -> AsyncFnEndpoint {
                 json!({ "subject": uri(subject.as_str()) }),
             )
             .await?;
-            Ok(text(lines.join("\n")).cacheable())
+            // The rows are joined in the order the query answered them, which is its ORDER BY's.
+            let separator = if inv.request.args.contains_key("separator") {
+                inv.inline_str("separator")?.to_string()
+            } else {
+                "\n".to_string()
+            };
+            Ok(text(lines.join(&separator)).cacheable())
         })
     })
     .with_description(
@@ -63,7 +70,7 @@ pub fn binder() -> AsyncFnEndpoint {
             .summary(
                 "Runs a stored SPARQL SELECT over `graph` with `subject` bound to `?subject` as \
                  an IRI (never spliced into the text), and answers its `?line` column as plain \
-                 text, one value per line.",
+                 text, one value per line (or joined by `separator`), in the query's order.",
             )
             .verb(Verb::Source)
             .verb(Verb::Meta)
@@ -94,6 +101,15 @@ pub fn binder() -> AsyncFnEndpoint {
                 ArgSpec::new("subject")
                     .summary("the name bound to ?subject")
                     .class(XSD_ANY_URI),
+            )
+            .input(
+                ArgSpec::new("separator")
+                    .summary(
+                        "what joins the ?line values, in the order the query answers them; a \
+                         newline when it is left out, a space to make one line of sentences",
+                    )
+                    .class(XSD_STRING)
+                    .optional(),
             )
             .output("text/plain;charset=utf-8"),
     )

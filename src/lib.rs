@@ -296,12 +296,14 @@ pub fn resource_map(realm: &Realm) -> Result<AliasTable, DeclarationError> {
             "urn:resmud:character:id:{character}",
             "urn:resmud:character:id:{character}:carries",
         ),
+        // One sentence per thing, by label then by name, joined into one line.
         query_over(
             "urn:resmud:character:id:{character}:inventory",
             "inventory",
             "urn:resmud:character:id:{character}",
             "urn:resmud:character:id:{character}:carries:graph",
-        ),
+        )
+        .fixing(FixedArgument::value("separator", " ")),
         query_atom(
             "urn:resmud:room:id:{room}:description",
             "description",
@@ -320,7 +322,8 @@ pub fn resource_map(realm: &Realm) -> Result<AliasTable, DeclarationError> {
             "content",
             "urn:resmud:room:id:{room}",
             "urn:resmud:room:id:{room}:content:graph",
-        ),
+        )
+        .fixing(FixedArgument::value("separator", " ")),
         query_atom(
             "urn:resmud:room:id:{room}:exit",
             "exit",

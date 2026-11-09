@@ -267,20 +267,15 @@ fn a_verb_can_create_a_thing_and_place_it_here() {
         w.play("sink urn:resmud:verb:id:conjure-here").unwrap(),
         "You conjure-here."
     );
-    // The room lists both things (in no promised order: the contents line does not sort).
-    let look = w.play("source urn:resmud:look").unwrap();
-    let lines: Vec<_> = look.lines().collect();
-    assert_eq!(lines.len(), 4, "{look}");
-    assert_eq!(lines[0], "A warm kitchen. Bread is cooling on the sill.");
-    assert!(
-        lines[1].contains("You see the lamp. A brass lamp, dull with age."),
-        "{look}"
+    // The room lists both things, by label.
+    assert_eq!(
+        w.play("source urn:resmud:look").unwrap(),
+        "A warm kitchen. Bread is cooling on the sill.\n\
+         You see the lamp. A brass lamp, dull with age. \
+         You see the pebble. A smooth grey pebble.\n\
+         Exits: east.\n\
+         You carry nothing."
     );
-    assert!(
-        lines[1].contains("You see the pebble. A smooth grey pebble."),
-        "{look}"
-    );
-    assert_eq!(lines[2..], ["Exits: east.", "You carry nothing."]);
     assert_eq!(
         w.file("room/kitchen.ttl"),
         kitchen,
@@ -344,4 +339,65 @@ fn a_take_recomputes_only_what_read_the_two_atoms_it_wrote() {
             "{name} read an atom the take wrote, and its thread was cut"
         );
     }
+}
+
+#[test]
+fn a_room_and_an_inventory_list_their_things_by_label_then_by_name() {
+    let w = World::new();
+    // Five things whose keys, labels and descriptions each sort differently, two of them
+    // with the same label: the line lists them by label, and two with the same label by
+    // their names (`stone-1` before `stone-9`), whatever order they were written in.
+    w.publish(
+        "stock",
+        r#"(graph
+  (prefix (rm "https://iriref.org/resmud/core#") (rms "https://iriref.org/resmud/space#")
+          (rdfs "http://www.w3.org/2000/01/rdf-schema#"))
+  ((iri "urn:resmud:thing:id:zz") a rm:Item)
+  ((iri "urn:resmud:thing:id:zz") rdfs:label "apple")
+  ((iri "urn:resmud:thing:id:zz") rm:description "A red apple.")
+  ((iri "urn:resmud:thing:id:stone-9") a rm:Item)
+  ((iri "urn:resmud:thing:id:stone-9") rdfs:label "stone")
+  ((iri "urn:resmud:thing:id:stone-9") rm:description "A grey stone.")
+  ((iri "urn:resmud:thing:id:aa") a rm:Item)
+  ((iri "urn:resmud:thing:id:aa") rdfs:label "zither")
+  ((iri "urn:resmud:thing:id:aa") rm:description "A zither with one string.")
+  ((iri "urn:resmud:thing:id:stone-1") a rm:Item)
+  ((iri "urn:resmud:thing:id:stone-1") rdfs:label "stone")
+  ((iri "urn:resmud:thing:id:stone-1") rm:description "A white stone.")
+  ((iri "urn:resmud:thing:id:mm") a rm:Item)
+  ((iri "urn:resmud:thing:id:mm") rdfs:label "mug")
+  ((iri "urn:resmud:thing:id:mm") rm:description "A chipped mug.")
+  ((iri "urn:resmud:room:id:kitchen") rms:contains (iri "urn:resmud:thing:id:zz"))
+  ((iri "urn:resmud:room:id:kitchen") rms:contains (iri "urn:resmud:thing:id:stone-9"))
+  ((iri "urn:resmud:room:id:kitchen") rms:contains (iri "urn:resmud:thing:id:aa"))
+  ((iri "urn:resmud:room:id:kitchen") rms:contains (iri "urn:resmud:thing:id:stone-1"))
+  ((iri "urn:resmud:room:id:kitchen") rms:contains (iri "urn:resmud:thing:id:mm")))"#,
+    );
+    w.play("sink urn:resmud:verb:id:stock").unwrap();
+    let things = "You see the apple. A red apple. \
+                  You see the lamp. A brass lamp, dull with age. \
+                  You see the mug. A chipped mug. \
+                  You see the stone. A white stone. \
+                  You see the stone. A grey stone. \
+                  You see the zither. A zither with one string.";
+    assert_eq!(
+        w.play("source urn:resmud:room:id:kitchen:content:line")
+            .unwrap(),
+        things
+    );
+    // Everything taken, in another order again: the inventory lists them the same way.
+    for key in ["mm", "lamp", "stone-9", "aa", "stone-1", "zz"] {
+        w.play(&format!("sink urn:resmud:verb:name:take {key}"))
+            .unwrap();
+    }
+    assert_eq!(
+        w.play("source urn:resmud:character:id:alice:inventory")
+            .unwrap(),
+        things.replace("You see", "You carry")
+    );
+    assert_eq!(
+        w.play("source urn:resmud:room:id:kitchen:content:line")
+            .unwrap(),
+        "Nothing here can be taken."
+    );
 }

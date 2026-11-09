@@ -1,14 +1,25 @@
-# What a room holds that can be taken, as sentences.
+# What a room holds that can be taken, as sentences: one row per thing, by label and then by
+# name, so a room is said the same way every time (resmud#58). The query adapter joins the
+# rows with a space (`separator`), into one line. A room that holds nothing answers one row
+# saying so. The order is the outer ORDER BY's, the one order SPARQL promises:
+# GROUP_CONCAT's is unspecified, and an ordered subquery inside an OPTIONAL did not keep its
+# order through the store.
 PREFIX rm:   <https://iriref.org/resmud/core#>
 PREFIX rms:  <https://iriref.org/resmud/space#>
 PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-SELECT ?subject (IF(COUNT(?item) = 0, "Nothing here can be taken.",
-                    GROUP_CONCAT(?entry; separator=" ")) AS ?line)
-WHERE {
-  OPTIONAL {
+SELECT ?line ?subject WHERE {
+  {
     ?subject rms:contains ?item .
     ?item a rm:Item ; rdfs:label ?label ; rm:description ?description .
-    BIND(CONCAT("You see the ", ?label, ". ", ?description) AS ?entry)
+    BIND(CONCAT("You see the ", ?label, ". ", ?description) AS ?line)
+  }
+  UNION
+  {
+    FILTER NOT EXISTS {
+      ?subject rms:contains ?any .
+      ?any a rm:Item ; rdfs:label ?anyLabel ; rm:description ?anyDescription .
+    }
+    BIND("Nothing here can be taken." AS ?line)
   }
 }
-GROUP BY ?subject
+ORDER BY STR(?label) STR(?item)
