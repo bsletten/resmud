@@ -32,7 +32,8 @@ cargo run --example door
 ```
 
 and type `look`, `help`, `go east`, `take lamp` or `quit`. The door also takes the REPL's own lines
-(`source urn:resmud:look`, `sink urn:resmud:verb:name:take lamp`), and prints only plain text.
+(`source urn:resmud:look`, `sink urn:resmud:verb:name:take lamp`), over the names a player's corridor
+exposes, and prints only plain text.
 
 - **The realm is files.** `realm/first/` holds the sample realm: the realm atom, its shapes, two
   rooms, a lamp, a character and an author, as Turtle. The tests copy it into a scratch directory.

@@ -239,3 +239,200 @@ fn looking_answers_only_in_plain_text() {
         assert!(resmud::is_plain(text), "{line}: {text:?}");
     }
 }
+
+/// What a raw REPL line answers for a name the looker does not see is what `look` answers for
+/// it, the same sentence and the same typed error, whether the name exists elsewhere or nowhere
+/// (resmud#63).
+#[test]
+fn a_raw_read_of_a_thing_elsewhere_answers_as_look_does() {
+    let elsewhere = World::new();
+    let nowhere = without_lamp();
+    for w in [&elsewhere, &nowhere] {
+        assert_eq!(said(&w.door(), "go east"), "You go east, to the garden.");
+    }
+    for line in [
+        "source urn:resmud:thing:id:lamp:description",
+        "source urn:resmud:thing:id:lamp",
+        "exists urn:resmud:thing:id:lamp",
+        "sink urn:resmud:thing:id:lamp gone",
+    ] {
+        let (door, ghost) = (elsewhere.door(), nowhere.door());
+        let there = refused(&door, line);
+        let look = refused(&door, "look lamp");
+        assert_eq!(there.0, "You see no lamp here.", "{line}");
+        assert_eq!(there.0, look.0, "{line}");
+        assert_eq!(format!("{:?}", there.1), format!("{:?}", look.1), "{line}");
+        let gone = refused(&ghost, line);
+        assert_eq!(there.0.as_bytes(), gone.0.as_bytes(), "{line}");
+        assert_eq!(format!("{:?}", there.1), format!("{:?}", gone.1), "{line}");
+    }
+}
+
+#[test]
+fn a_raw_read_of_what_is_with_the_looker_still_answers() {
+    let w = with_bob("kitchen");
+    let door = w.door();
+    for (line, answer) in [
+        ("source urn:resmud:thing:id:lamp:description", LAMP),
+        ("source urn:resmud:room:id:kitchen:description", KITCHEN),
+        ("source urn:resmud:character:id:bob:description", BOB),
+        ("source urn:resmud:character:id:alice:description", ALICE),
+        ("source urn:resmud:character:id:alice:place", "kitchen"),
+        ("exists urn:resmud:thing:id:lamp", "true"),
+    ] {
+        assert_eq!(said(&door, line), answer, "{line}");
+    }
+    let view = said(&door, "source urn:resmud:view:room:id:kitchen");
+    assert!(view.starts_with(KITCHEN), "{view}");
+    // A carried thing is with the looker wherever it goes, so its raw name goes along.
+    said(&door, "take lamp");
+    said(&door, "go east");
+    assert_eq!(
+        said(&door, "source urn:resmud:thing:id:lamp:description"),
+        LAMP
+    );
+}
+
+#[test]
+fn a_raw_read_of_a_room_or_a_character_elsewhere_is_refused_as_look_refuses_it() {
+    let w = with_bob("kitchen");
+    let door = w.door();
+    said(&door, "go east");
+    for (line, name) in [
+        ("source urn:resmud:room:id:kitchen:description", "kitchen"),
+        ("source urn:resmud:room:id:kitchen:content:line", "kitchen"),
+        ("source urn:resmud:room:id:kitchen:exit", "kitchen"),
+        ("source urn:resmud:view:room:id:kitchen", "kitchen"),
+        ("source urn:resmud:character:id:bob:description", "bob"),
+        ("source urn:resmud:character:id:bob:place", "bob"),
+        ("source urn:resmud:character:id:bob:inventory", "bob"),
+        ("source urn:resmud:character:id:bob:look", "bob"),
+        ("source urn:resmud:character:id:zebra:look", "zebra"),
+    ] {
+        let (sentence, error) = refused(&door, line);
+        assert_eq!(sentence, format!("You see no {name} here."), "{line}");
+        assert!(
+            matches!(error, Some(Error::NotFound(_))),
+            "{line}: {error:?}"
+        );
+    }
+}
+
+#[test]
+fn seeing_a_character_does_not_read_what_it_carries_or_where_it_looks() {
+    let w = with_bob("kitchen");
+    let door = w.door();
+    for line in [
+        "source urn:resmud:character:id:bob:inventory",
+        "source urn:resmud:character:id:bob:carries",
+        "source urn:resmud:character:id:bob:sees",
+        "source urn:resmud:character:id:bob:look",
+        "source urn:resmud:character:id:bob:look:name:lamp",
+    ] {
+        let (sentence, _) = refused(&door, line);
+        assert_eq!(
+            sentence, "There is nothing by that name in this realm.",
+            "{line}"
+        );
+    }
+}
+
+/// `urn:resmud:seen` takes the list it judges by as an argument, and the published modules read
+/// any name they are given, so none of these may be reached from a prompt.
+#[test]
+fn no_raw_line_reaches_a_thing_out_of_sight_by_another_road() {
+    let w = World::new();
+    let door = w.door();
+    said(&door, "go east");
+    for line in [
+        "source urn:resmud:seen name=lamp sees=urn:resmud:thing:id:lamp",
+        "source urn:resmud:query query=urn:resmud:query:id:description \
+         subject=urn:resmud:thing:id:lamp atom=urn:resmud:thing:id:lamp",
+        "source urn:sparql:select graph=urn:resmud:thing:id:lamp \
+         \"query=SELECT ?o WHERE { ?s ?p ?o }\"",
+        "source urn:resmud:world",
+        "source urn:kernel:actions",
+        // A reference is read for its answer before the endpoint runs, so a refusal that
+        // echoes the word it was given would print the description.
+        "sink urn:resmud:verb:name:take content=<urn:resmud:thing:id:lamp:description>",
+        "sink urn:resmud:verb:name:go content=<urn:resmud:thing:id:lamp:description>",
+        "source urn:resmud:look x=<urn:resmud:thing:id:lamp:description>",
+        // Through a pipe.
+        "source urn:resmud:thing:id:lamp:description | sink urn:resmud:verb:name:take",
+        // An argument the binding fixes stays the binding's.
+        "source urn:resmud:look:name:lamp sees=urn:resmud:thing:id:lamp",
+        "source urn:resmud:character:id:alice:look:name:lamp sees=urn:resmud:thing:id:lamp",
+    ] {
+        let turn = door.eval(line);
+        let text = turn.text().unwrap_or_default().to_string();
+        assert!(!text.contains("brass"), "{line}: {text}");
+        assert!(matches!(turn, Turn::Refused { .. }), "{line}: {turn:?}");
+        assert!(resmud::is_plain(&text), "{line}: {text}");
+    }
+}
+
+/// A name passed by reference is read for its answer before the endpoint runs, so the gate
+/// judges it as it judges a target, and answers as `look` does.
+#[test]
+fn a_reference_to_a_thing_out_of_sight_is_refused_as_look_refuses_it() {
+    let w = World::new();
+    let door = w.door();
+    said(&door, "go east");
+    assert_eq!(
+        refused(
+            &door,
+            "source urn:resmud:look x=<urn:resmud:thing:id:lamp:description>"
+        )
+        .0,
+        "You see no lamp here."
+    );
+}
+
+/// The rule is the door's, for a player: the host that runs the realm reads its own kernel.
+#[test]
+fn the_operator_reads_the_realm_on_the_kernel_not_through_a_players_door() {
+    let w = World::new();
+    w.play("sink urn:resmud:verb:name:go east").unwrap();
+    assert_eq!(
+        w.play("source urn:resmud:thing:id:lamp:description")
+            .unwrap(),
+        LAMP
+    );
+    let root = Request::new(Verb::Source, iri("urn:resmud:room:id:kitchen:content:line"));
+    let line = w.text(w.issue(
+        root,
+        &resmud::ikigai_core::Capability::root(),
+        resmud::ikigai_core::Scope::empty(),
+    ));
+    assert!(line.contains(LAMP), "{line}");
+}
+
+#[test]
+fn a_corridor_that_widens_what_a_character_sees_widens_its_raw_reads_too() {
+    let w = World::new();
+    w.play("sink urn:resmud:verb:name:go east").unwrap();
+    let eye = EndpointSpace::new().bind(
+        Exact::new("urn:resmud:character:id:alice:sees"),
+        FnEndpoint::new("test-magic-eye", |_| {
+            Ok(Representation::new(
+                ReprType::new("text/plain").with_param("charset", "utf-8"),
+                b"urn:resmud:room:id:garden\nurn:resmud:thing:id:lamp".to_vec(),
+            ))
+        }),
+    );
+    let corridor = resmud::corridor("alice").with_named(
+        iri("urn:resmud:corridor:name:magic-eye"),
+        Arc::new(Alias::new(Arc::new(AliasTable::new()), Arc::new(eye))),
+    );
+    let door = w.door_as(&w.alice(), corridor);
+    assert_eq!(
+        said(&door, "source urn:resmud:thing:id:lamp:description"),
+        LAMP,
+        "what the eye sees, the raw name reads"
+    );
+    assert_eq!(
+        refused(&door, "source urn:resmud:room:id:kitchen:description").0,
+        "You see no kitchen here.",
+        "the eye sees the lamp, not the room it lies in"
+    );
+}
