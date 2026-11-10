@@ -18,7 +18,7 @@
 //! | `help` or `what` | `source urn:resmud:affordance` (what you can do here) |
 //! | `go east`, `take lamp`, `drop lamp` | `sink urn:resmud:verb:name:{go,take,drop} …` |
 //! | `polish lamp` (any other first word) | `sink urn:resmud:verb:id:polish lamp`, a verb a player wrote |
-//! | `source …`, `sink …`, `exists …` | the line itself, in the REPL's own grammar |
+//! | `source …`, `sink …`, `exists …` | the line itself, over the names the rule below exposes |
 //! | `quit` | leaves |
 //!
 //! The door's own words are read in any case (`Look`, `GO east`); a verb a player wrote, a thing
@@ -29,6 +29,25 @@
 //! their answers name resources by IRI. A first word that is not in the table is a verb a
 //! player wrote, so `list` asks the realm for a verb called `list`, and the realm says it has
 //! none.
+//!
+//! **What a raw line can reach.** A raw `source`, `sink` or `exists` line (and every name it
+//! gives by reference, `k=<urn:…>`) names only what a player's corridor exposes:
+//!
+//! | a name | what the door does |
+//! |---|---|
+//! | `urn:resmud:look`, `…:look:name:{name}`, `urn:resmud:affordance`, `urn:resmud:manifold`, the verbs under `urn:resmud:verb:` | issues it |
+//! | anything of the player's own character | issues it |
+//! | a reading of one thing, room or other character (`urn:resmud:thing:id:{t}`, `…:description`, `urn:resmud:view:room:id:{r}`, …) | issues it if the player's `…:sees` lists that name; otherwise refuses it as `look` refuses it |
+//! | what a character carries, sees or looks at, for a character that is not the player's | issues nothing: nothing by that name, even for a character the player sees |
+//! | anything else (`urn:resmud:seen`, `urn:resmud:query`, `urn:resmud:world`, `urn:sparql:*`, `urn:kernel:*`, …) | issues nothing: nothing by that name |
+//!
+//! `…:sees` is read in the player's corridor, so a corridor that widens what a character sees
+//! (remote viewing) widens its raw reads with it. The host that runs the realm is not a
+//! player: it reads the kernel directly and never comes through this door.
+//!
+//! This is code, not a corridor rule, because a corridor is consulted for every sub-request
+//! too: one standing in for `urn:resmud:thing:id:{t}` would also stand in for the realm's own
+//! reads of that atom. Only the door's resolver sees a player's requests and nothing else.
 //!
 //! **What the door prints is plain text, always.** A refusal is [`crate::refusal_with_help`] of
 //! the TYPED error the kernel raised, never the engine's message (which names resources by IRI
@@ -50,12 +69,15 @@ use std::sync::{Arc, Mutex, PoisonError};
 use async_trait::async_trait;
 use futures::executor::block_on;
 use ikigai_core::{
-    Body, Capability, Error, Kernel, Provenance, Representation, Request, Scope, SpaceEntry, Verb,
+    ArgRef, Body, Capability, Error, Iri, Kernel, Provenance, Representation, Request, Scope,
+    SpaceEntry, Verb,
 };
 use ikigai_engine::{Action, Engine};
 use ikigai_resolve::{CacheStatus, Resolver};
 
-use crate::{corridor, edge, is_key, is_plain, player, refusal_with_help, Realm};
+use crate::{
+    character_iri, corridor, edge, iri, is_key, is_plain, player, refusal_with_help, sight, Realm,
+};
 
 /// The moves bound in code (`urn:resmud:verb:name:{move}`): the words `go`, `take` and `drop`.
 pub const MOVES: [&str; 3] = ["go", "take", "drop"];
@@ -214,6 +236,64 @@ fn not_understood() -> String {
     )
 }
 
+/// How far a name reaches when a raw line gives it to the door (see the module's table).
+#[derive(Debug, PartialEq, Eq)]
+enum Reach<'a> {
+    /// Issued as it is.
+    Open,
+    /// A reading of one thing, room or character, issued only if the player sees it.
+    Seen {
+        kind: &'a str,
+        name: &'a str,
+        /// It reads past what sight shows of a character the player sees (what it carries,
+        /// where it is), so it is not exposed even then.
+        past_sight: bool,
+    },
+    /// Not a name a player's corridor exposes.
+    Closed,
+}
+
+/// The names a raw line may give whoever plays, as they are or as a prefix.
+const OPEN: [&str; 3] = [
+    "urn:resmud:look",
+    "urn:resmud:affordance",
+    "urn:resmud:manifold",
+];
+const OPEN_PREFIX: [&str; 2] = ["urn:resmud:look:name:", "urn:resmud:verb:"];
+
+/// How far `name` reaches for the player playing `character`, if any.
+fn reach<'a>(name: &'a str, character: Option<&str>) -> Reach<'a> {
+    if OPEN.contains(&name) || OPEN_PREFIX.iter().any(|prefix| name.starts_with(prefix)) {
+        return Reach::Open;
+    }
+    if let Some(room) = name.strip_prefix("urn:resmud:view:room:id:") {
+        return Reach::Seen {
+            kind: "room",
+            name: room,
+            past_sight: false,
+        };
+    }
+    for kind in sight::KINDS {
+        let Some(rest) = name
+            .strip_prefix("urn:resmud:")
+            .and_then(|rest| rest.strip_prefix(kind))
+            .and_then(|rest| rest.strip_prefix(":id:"))
+        else {
+            continue;
+        };
+        let (key, part) = rest.split_once(':').unwrap_or((rest, ""));
+        if kind == "character" && Some(key) == character {
+            return Reach::Open;
+        }
+        return Reach::Seen {
+            kind,
+            name: key,
+            past_sight: kind == "character" && !matches!(part, "" | "description"),
+        };
+    }
+    Reach::Closed
+}
+
 /// The realm's kernel as the engine's resolver, for one player: every request resolves in the
 /// player's corridor, and the first error of each line is kept for the door to phrase.
 struct InCorridor {
@@ -235,6 +315,63 @@ impl InCorridor {
                 detail: "a player's door resolves in the player's corridor only".into(),
             })
         }
+    }
+
+    /// The chain to resolve `request` in, if the player's corridor exposes its target and
+    /// every name it gives by reference: a reference is read for its answer before the
+    /// endpoint runs, so a refusal that echoes the word it was given would print it.
+    async fn admit(
+        &self,
+        request: &Request,
+        capability: &Capability,
+        scope: Scope,
+    ) -> Result<Scope, Error> {
+        let scope = self.chain(scope)?;
+        self.exposed(&request.target, capability).await?;
+        for arg in request.args.values() {
+            if let ArgRef::Reference(name) = arg {
+                self.exposed(name, capability).await?;
+            }
+        }
+        Ok(scope)
+    }
+
+    /// Whether the player's corridor exposes `name` ([`reach`]), and the refusal if not: the
+    /// one `look` gives for a name out of sight, read from the same `…:sees` it reads.
+    async fn exposed(&self, name: &Iri, capability: &Capability) -> Result<(), Error> {
+        let character = edge::playing(capability);
+        let (kind, key, past_sight) = match reach(name.as_str(), character) {
+            Reach::Open => return Ok(()),
+            Reach::Closed => return Err(Error::Unresolved(name.clone())),
+            Reach::Seen {
+                kind,
+                name: key,
+                past_sight,
+            } => (kind, key, past_sight),
+        };
+        if !is_key(key) {
+            return Err(edge::not_a_thing(key));
+        }
+        let character = character.ok_or_else(|| Error::Denied(edge::NOT_PLAYING.into()))?;
+        let sees = Request::new(
+            Verb::Source,
+            iri(&format!("{}:sees", character_iri(character))),
+        );
+        let sees = self
+            .kernel
+            .issue_in(sees, capability, self.corridor.clone())
+            .await?;
+        let wanted = format!("urn:resmud:{kind}:id:{key}");
+        if !String::from_utf8_lossy(&sees.bytes)
+            .lines()
+            .any(|line| line.trim() == wanted)
+        {
+            return Err(sight::not_seen(key));
+        }
+        if past_sight {
+            return Err(Error::Unresolved(name.clone()));
+        }
+        Ok(())
     }
 
     /// Keep `answer`'s error if it is the line's first. A contract read (Meta) is the engine
@@ -303,7 +440,7 @@ impl Resolver for InCorridor {
         scope: Scope,
     ) -> Result<(Representation, CacheStatus), Error> {
         let verb = request.verb;
-        let answer = match self.chain(scope) {
+        let answer = match self.admit(&request, capability, scope).await {
             Ok(scope) => {
                 <Kernel as Resolver>::issue_as_async_in(
                     &self.kernel,
@@ -328,7 +465,7 @@ impl Resolver for InCorridor {
         attach: Option<(String, Body)>,
     ) -> Result<(Representation, CacheStatus), Error> {
         let verb = request.verb;
-        let answer = match self.chain(scope) {
+        let answer = match self.admit(&request, capability, scope).await {
             Ok(scope) => {
                 <Kernel as Resolver>::issue_attached_in(
                     &self.kernel,
@@ -354,7 +491,7 @@ impl Resolver for InCorridor {
         attach: Option<(String, Body)>,
     ) -> Result<(Representation<Body>, CacheStatus), Error> {
         let verb = request.verb;
-        let answer = match self.chain(scope) {
+        let answer = match self.admit(&request, capability, scope).await {
             Ok(scope) => {
                 <Kernel as Resolver>::issue_body_attached_in(
                     &self.kernel,
@@ -559,6 +696,75 @@ mod tests {
         assert_eq!(words("QUIT"), Words::Quit);
         assert_eq!(words("Quit now"), Words::Alone("quit".into()));
         assert_eq!(words("HELP me"), Words::Alone("help".into()));
+    }
+
+    #[test]
+    fn a_raw_name_reaches_what_a_players_corridor_exposes() {
+        let me = Some("alice");
+        for name in [
+            "urn:resmud:look",
+            "urn:resmud:look:name:lamp",
+            "urn:resmud:affordance",
+            "urn:resmud:manifold",
+            "urn:resmud:verb:name:take",
+            "urn:resmud:verb:id:polish:source",
+            "urn:resmud:character:id:alice:sees",
+        ] {
+            assert_eq!(reach(name, me), Reach::Open, "{name}");
+        }
+        for name in [
+            "urn:resmud:seen",
+            "urn:resmud:query",
+            "urn:resmud:world",
+            "urn:sparql:select",
+            "urn:kernel:actions",
+            "urn:file:thing/lamp.ttl",
+        ] {
+            assert_eq!(reach(name, me), Reach::Closed, "{name}");
+        }
+        for (name, kind, key, past_sight) in [
+            ("urn:resmud:thing:id:lamp", "thing", "lamp", false),
+            (
+                "urn:resmud:thing:id:lamp:description",
+                "thing",
+                "lamp",
+                false,
+            ),
+            ("urn:resmud:room:id:kitchen:exit", "room", "kitchen", false),
+            ("urn:resmud:view:room:id:kitchen", "room", "kitchen", false),
+            ("urn:resmud:character:id:bob", "character", "bob", false),
+            (
+                "urn:resmud:character:id:bob:description",
+                "character",
+                "bob",
+                false,
+            ),
+            (
+                "urn:resmud:character:id:bob:inventory",
+                "character",
+                "bob",
+                true,
+            ),
+            ("urn:resmud:character:id:bob:look", "character", "bob", true),
+        ] {
+            assert_eq!(
+                reach(name, me),
+                Reach::Seen {
+                    kind,
+                    name: key,
+                    past_sight
+                },
+                "{name}"
+            );
+        }
+        // Nobody's own character is open to a capability that plays none.
+        assert!(matches!(
+            reach("urn:resmud:character:id:alice:sees", None),
+            Reach::Seen {
+                past_sight: true,
+                ..
+            }
+        ));
     }
 
     #[test]

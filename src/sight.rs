@@ -26,7 +26,12 @@ const XSD_STRING: &str = "http://www.w3.org/2001/XMLSchema#string";
 
 /// The kinds of name `look` can be given, in the order a name shared by two is read: a thing
 /// first, as `look` read it before it could name anything else.
-const KINDS: [&str; 3] = ["thing", "character", "room"];
+pub(crate) const KINDS: [&str; 3] = ["thing", "character", "room"];
+
+/// The refusal for a name the looker does not see, whether it exists elsewhere or nowhere.
+pub(crate) fn not_seen(name: &str) -> Error {
+    Error::NotFound(format!("you see no {name} here"))
+}
 
 /// The endpoint at `urn:resmud:seen`: the description of `name`, if `sees` (the list of names
 /// a character sees) holds a thing, character or room of that name, or the same refusal for
@@ -38,19 +43,18 @@ pub fn seen() -> AsyncFnEndpoint {
             if !is_key(&name) {
                 return Err(edge::not_a_thing(&name));
             }
-            let not_seen = || Error::NotFound(format!("you see no {name} here"));
             let sees = inv.inline_str("sees")?;
             let found = KINDS
                 .iter()
                 .map(|kind| format!("urn:resmud:{kind}:id:{name}"))
                 .find(|candidate| sees.lines().any(|line| line.trim() == candidate));
             let Some(found) = found else {
-                return Err(not_seen());
+                return Err(not_seen(&name));
             };
             // A contents atom can name a thing with no atom of its own; the room's text does
             // not show one, so it is not something to see either.
             match inv.source(&iri(&format!("{found}:description"))).await {
-                Err(Error::NotFound(_)) => Err(not_seen()),
+                Err(Error::NotFound(_)) => Err(not_seen(&name)),
                 answer => answer,
             }
         })

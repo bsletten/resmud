@@ -108,7 +108,7 @@ and maps each, as text, to the REPL line that names an existing resource:
 | `help` or `what` | `source urn:resmud:affordance` |
 | `go east`, `take lamp`, `drop lamp` | `sink urn:resmud:verb:name:{go,take,drop} …` |
 | `polish lamp` (any other first word) | `sink urn:resmud:verb:id:polish lamp` |
-| `source …`, `sink …`, `exists …` | the line itself |
+| `source …`, `sink …`, `exists …` | the line itself, over the names a player's corridor exposes (see [What a raw line can reach](#what-a-raw-line-can-reach)) |
 | `quit` | leaves |
 
 The door's own words are read in any case (`Look`, `GO east`). A verb a player wrote, a thing and
@@ -288,6 +288,8 @@ atom by its subject, the room.
 | a caller who plays no character, or a principal that is not a character | **Denied** |
 | a move or a verb without `urn:cap:resmud:play` or `urn:cap:resmud:verb:run` | **Denied**, by the declared capability floor |
 | `look` and a name the looker does not see, whether it exists elsewhere or nowhere | **NotFound**: "You see no lamp here." |
+| a raw line at the door naming a thing, room or character the player does not see | **NotFound**: "You see no lamp here.", the same as `look` |
+| a raw line at the door naming what a player's corridor does not expose | **Unresolved**: "There is nothing by that name in this realm." |
 | a verb nobody published (`dance`), checked before its author or its thing | **NotFound**: "There is no verb called dance." |
 | a verb whose signature fails, or that names no author or an unknown one | **Denied** |
 | a verb that writes what its author's grant and its caller's capability together do not cover | **Denied** |
@@ -437,3 +439,32 @@ refusal, `You see no lamp here.`, so `look` cannot tell a thing elsewhere from a
   eye, a camera or binoculars switches on for one character can rebind or extend `…:sees` for that
   character, layered over the realm's rule rather than changing it. `tests/sight.rs` pins this with
   a corridor that rebinds it.
+
+### What a raw line can reach
+
+**Built for resmud#63.** The door takes the REPL's own `source`, `sink` and
+`exists` lines, and those named resources directly, so a player could read a thing's description
+from anywhere, past the rule above. The door now judges every name a raw line gives it, its target
+and each name it passes by reference (`k=<urn:…>`), which the kernel reads before the endpoint
+runs:
+
+| a name | at the door |
+|---|---|
+| `urn:resmud:look`, `…:look:name:{name}`, `urn:resmud:affordance`, `urn:resmud:manifold`, `urn:resmud:verb:*` | issued |
+| anything of the player's own character | issued |
+| a reading of a thing, room or other character: `urn:resmud:{thing,room,character}:id:{key}`, its `…:description`, `urn:resmud:view:room:id:{room}`, … | issued if the player's `…:sees` lists it, otherwise **NotFound**, the sentence `look` gives |
+| what a character carries, sees or looks at, for a character that is not the player's | not issued, even for one the player sees: **Unresolved**. Sight shows a character's description |
+| anything else: `urn:resmud:seen`, `urn:resmud:query`, `urn:resmud:world`, `urn:sparql:*`, `urn:kernel:*`, … | not issued: **Unresolved** |
+
+- **`…:sees` stays the one list.** The door reads it in the player's corridor, so a corridor that
+  widens it (remote viewing, resmud#59) widens raw reads with it, and a character it does not list
+  is refused the way `look` refuses it.
+- **Why this is the door's and not a corridor's.** A corridor is consulted for every sub-request
+  too, so a rule standing in for `urn:resmud:thing:id:{t}` in the player's corridor would also stand
+  in for the realm's own reads of that atom, and the room's contents line would stop answering.
+  Only the door's resolver sees a player's own requests and nothing else. The allow-list is short
+  and closed, because `urn:resmud:seen` takes the list it judges by as an argument, and the
+  published modules (`urn:sparql:*`, `urn:iki:fn:*`) read any name they are given.
+- **The operator's access is separate.** A host that runs the realm issues on the kernel with its
+  own capability (`Kernel::issue_in`), and no gate stands there: the rule is the door's, for a
+  player. `resmud::corridor` is unchanged.

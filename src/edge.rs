@@ -51,8 +51,8 @@
 //! by IRI; a door shows a player [`crate::refusal`] of it.
 
 use ikigai_core::{
-    ActionSpec, ArgRef, ArgSpec, AsyncFnEndpoint, Description, Error, FailureClass, Invocation,
-    ReprType, Representation, Request, Result, Verb,
+    ActionSpec, ArgRef, ArgSpec, AsyncFnEndpoint, Capability, Description, Error, FailureClass,
+    Invocation, ReprType, Representation, Request, Result, Verb,
 };
 use serde_json::json;
 
@@ -62,14 +62,20 @@ use crate::{character_iri, iri, is_key, CAP_PLAY, DIRECTIONS, SPACE_VOCABULARY, 
 const XSD_STRING: &str = "http://www.w3.org/2001/XMLSchema#string";
 
 /// The refusal for a caller who plays no character of this realm.
-const NOT_PLAYING: &str = "you are not playing a character in this realm, so you cannot act in it";
+pub(crate) const NOT_PLAYING: &str =
+    "you are not playing a character in this realm, so you cannot act in it";
 
-/// The character the caller plays: its principal, which must be a character's name.
-pub(crate) fn actor(inv: &Invocation<'_>) -> Result<String> {
-    inv.capability
+/// The character a capability plays: its principal, if that is a character's name.
+pub(crate) fn playing(capability: &Capability) -> Option<&str> {
+    capability
         .principal()
         .and_then(|principal| principal.strip_prefix("urn:resmud:character:id:"))
         .filter(|key| is_key(key))
+}
+
+/// The character the caller plays: its principal, which must be a character's name.
+pub(crate) fn actor(inv: &Invocation<'_>) -> Result<String> {
+    playing(inv.capability)
         .map(str::to_string)
         .ok_or_else(|| Error::Denied(NOT_PLAYING.into()))
 }

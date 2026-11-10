@@ -43,7 +43,9 @@ emits, as `text/plain; charset=utf-8`:
   `look`; `look` and a name (`look lamp`, the description of a thing, a character or the room, if you can see it); `help` or `what` (what you
   can do here); `go east`, `take lamp`, `drop lamp`; a verb a player wrote and a thing
   (`polish lamp`); `quit`. The door's own words are read in any case (`Look`, `LOOK`). It also takes the REPL's own
-  `source`, `sink` and `exists` lines (`source urn:resmud:look`). The example's one greeting
+  `source`, `sink` and `exists` lines (`source urn:resmud:look`), over the names a player's
+  corridor exposes: a reading of a thing, a room or another character answers only if you can see
+  it, and says `You see no lamp here.` otherwise, as `look` does. The example's one greeting
   line says which words to start with.
 
 The words come from the realm's own files (`realm/first/`) and from the stored queries that phrase
@@ -106,6 +108,10 @@ What the build now holds, and how:
   names, so a screen-reader user hears the same room the same way on every look, whatever order
   the things were put there in (`tests/play.rs`,
   `a_room_and_an_inventory_list_their_things_by_label_then_by_name`).
+- **A raw line sees no further than `look`.** At the door, `source urn:resmud:thing:id:lamp:description`
+  of a lamp out of sight is refused with the sentence and the typed error `look lamp` gets, the
+  same for a thing elsewhere as for a name that exists nowhere (`tests/sight.rs`,
+  `a_raw_read_of_a_thing_elsewhere_answers_as_look_does`).
 - **No angle brackets in what a player reads.** The affordance list says what each action takes in
   words (`go a direction`, `a verb a player wrote, then a thing`), and the plain-text test checks
   every answer of the text face, the affordance list included, with `resmud::is_plain`.
@@ -140,10 +146,6 @@ What the build now holds, and how:
 - **Only the door's own words are read in any case.** A verb a player wrote, a thing and a
   direction are the realm's names, which are lowercase, so `Polish lamp`, `look Lamp` and
   `go East` are refused, each with a sentence saying how to spell it.
-- **`look lamp` is limited to what you can see; the REPL's own grammar is not.** `look` and a name
-  describes only what the looker sees, but the door also takes `source` lines, and
-  `source urn:resmud:thing:id:lamp:description` still answers wherever the lamp is. That is the
-  REPL's reach at the door, not a word a player is taught.
 - **The REPL's grammar at the door can narrow a session.** `sink urn:host:login …` (the engine's
   own login) lowers the session to what it names, and never above the player's capability; a
   player who does it is refused until `sink urn:host:logout`.
@@ -190,3 +192,4 @@ technology, if you are comfortable sharing them. Anything security-sensitive goe
 | 2026-11-07 | Where things are moved into atoms of their own (resmud#52): a lost race and a move that stopped halfway each say so in a sentence, and a thing is never lost silently. |
 | 2026-11-08 | `look` and a name describes only what the looker can see, a thing, a character or the room, and says `You see no lamp here.` for anything else, whether it exists elsewhere or nowhere (resmud#56). |
 | 2026-11-08 | A room's things and an inventory are listed by label, then by name, the same way every time; the limitation that they were in no promised order is gone (resmud#58). |
+| 2026-11-08 | A raw `source`, `sink` or `exists` line at the door reaches only what a player's corridor exposes, and refuses a name out of sight as `look` does; the limitation that the REPL's grammar read past `look` is gone (resmud#63). |
