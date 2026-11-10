@@ -213,6 +213,15 @@ Building it showed the first design was wrong, or silent, in six places:
   thing out of a room stays the moves' job. The runner writes a created thing before the atom that
   places it, so a failure between them leaves a thing nowhere, never a room listing a thing that
   does not exist (`tests/play.rs`, `a_verb_can_create_a_thing_and_place_it_here`).
+- **A verb writes with `if-match` too** (resmud#62). The runner reads each atom's version before it
+  patches it, and writes every atom that exists with `if-match` that version, as the moves do. A
+  take, a drop or another verb that wrote the atom meanwhile fails the write as Conflict, and the
+  runner reads the atom again, patches it and checks it against the shapes again (up to four
+  times), so a verb that places a thing in a room never writes back a lamp someone just took.
+  An atom it could not write after four tries refuses the verb as Conflict, and the atoms written
+  before that one stay written: a thing the verb created may be nowhere, as after any failure
+  between its writes. `tests/move.rs` races a verb placing a pebble against a take of the lamp
+  from the same room and checks that neither write is lost.
 - **A missing holding atom reads as empty, and the game never leaves one missing** (resmud#57).
   After resmud#52, a room with no `content/{room}.ttl` or a character with no `carries/{c}.ttl`
   made `look` fail with NotFound, and a verb that created a room did not create its contents. Both

@@ -172,3 +172,76 @@ fn two_players_taking_one_thing_at_once_leave_exactly_one_holding_it() {
         assert!(lists_lamp(&w, "content/kitchen.ttl"), "round {round}");
     }
 }
+
+#[test]
+fn a_verb_placing_a_thing_while_a_player_takes_one_loses_neither_write() {
+    let w = World::new();
+    let alice = w.alice();
+    for round in 0..12 {
+        // A verb that places a pebble in the kitchen rewrites the kitchen's contents, the
+        // atom a take of the lamp rewrites too (resmud#62). A pebble of its own each round,
+        // so each round's placement is a new one.
+        let pebble = format!("urn:resmud:thing:id:pebble-{round}");
+        w.publish(
+            &format!("conjure-{round}"),
+            &format!(
+                r#"(graph
+  (prefix (rm "https://iriref.org/resmud/core#") (rms "https://iriref.org/resmud/space#")
+          (rdfs "http://www.w3.org/2000/01/rdf-schema#"))
+  ((iri "{pebble}") a rm:Item)
+  ((iri "{pebble}") rdfs:label "pebble")
+  ((iri "{pebble}") rm:description "A smooth grey pebble.")
+  ((iri "urn:resmud:room:id:kitchen") rms:contains (iri "{pebble}")))"#
+            ),
+        );
+        let lines = [
+            format!("sink urn:resmud:verb:id:conjure-{round}"),
+            "sink urn:resmud:verb:name:take lamp".to_string(),
+        ];
+        let barrier = Arc::new(Barrier::new(lines.len()));
+        let answers: Vec<_> = std::thread::scope(|s| {
+            let handles: Vec<_> = lines
+                .iter()
+                .map(|line| {
+                    let (barrier, kernel, cap) =
+                        (Arc::clone(&barrier), Arc::clone(&w.kernel), &alice);
+                    s.spawn(move || {
+                        barrier.wait();
+                        block_on(kernel.issue_in(repl(line), cap, resmud::corridor("alice")))
+                    })
+                })
+                .collect();
+            handles.into_iter().map(|h| h.join().unwrap()).collect()
+        });
+        // Each one succeeds, or is refused with a Conflict in plain words.
+        for answer in &answers {
+            if let Err(e) = answer {
+                assert!(
+                    matches!(e, Error::Conflict(_)),
+                    "round {round}: {answers:?}"
+                );
+                assert!(resmud::is_plain(&resmud::refusal(e)), "{e:?}");
+            }
+        }
+        // And neither write is lost.
+        let kitchen = w.file("content/kitchen.ttl");
+        if answers[0].is_ok() {
+            assert!(
+                kitchen.contains(&format!("<{pebble}>")),
+                "round {round}: the verb's placement was lost: {kitchen}"
+            );
+        }
+        if answers[1].is_ok() {
+            assert!(lists_lamp(&w, "carries/alice.ttl"), "round {round}");
+            assert!(
+                !lists_lamp(&w, "content/kitchen.ttl"),
+                "round {round}: the take's removal was lost, the lamp is in two places: \
+                 {kitchen}"
+            );
+            w.play("sink urn:resmud:verb:name:drop lamp").unwrap();
+        }
+        // The next round starts with the lamp in the kitchen.
+        assert!(lists_lamp(&w, "content/kitchen.ttl"), "round {round}");
+        assert!(!lists_lamp(&w, "carries/alice.ttl"), "round {round}");
+    }
+}
