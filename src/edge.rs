@@ -162,8 +162,8 @@ async fn relocate(
     Ok(())
 }
 
-/// How many times a move reads an atom again after `if-match` found it changed.
-const ATTEMPTS: usize = 4;
+/// How many times a move, or a verb, reads an atom again after `if-match` found it changed.
+pub(crate) const ATTEMPTS: usize = 4;
 
 /// One atom of where things are: a room's contents, or what a character carries.
 struct Holding {
@@ -228,12 +228,12 @@ async fn holds(inv: &Invocation<'_>, at: &Holding, thing: &str) -> Result<bool> 
     Ok(!lines.is_empty())
 }
 
-/// The content id of `at`'s file as it is now: the `if-match` its next write carries. It is
-/// the id of the bytes alone, which `ikigai-fs` accepts whatever media type it reads the
-/// file as. `None` when the realm keeps no file for it yet: it holds nothing, and the next
-/// write creates it.
-async fn version(inv: &Invocation<'_>, at: &Holding) -> Result<Option<String>> {
-    match inv.source(&iri(&at.file)).await {
+/// The content id of the file `file` (`urn:file:…`) as it is now: the `if-match` its next
+/// write carries. It is the id of the bytes alone, which `ikigai-fs` accepts whatever media
+/// type it reads the file as. `None` when the realm keeps no file for it yet: an atom of
+/// where things are holds nothing, and the next write creates it.
+pub(crate) async fn version(inv: &Invocation<'_>, file: &str) -> Result<Option<String>> {
+    match inv.source(&iri(file)).await {
         Ok(answer) => Ok(Some(
             Representation::new(ReprType::new("application/octet-stream"), answer.bytes)
                 .content_id()
@@ -269,13 +269,13 @@ async fn rewrite(
 /// been written when this fails.
 async fn put(inv: &Invocation<'_>, at: &Holding, thing: &str, key: &str) -> Result<()> {
     for _ in 0..ATTEMPTS {
-        let id = version(inv, at).await?;
+        let id = version(inv, &at.file).await?;
         match rewrite(inv, at, "put", thing, id.as_deref()).await {
             Err(Error::Conflict(_)) => continue,
             // Creating the file, which another writer created first: `ikigai-fs` refuses to
             // replace a file that appeared while the write was in flight, so read it again.
             Err(e @ Error::Endpoint(_)) if id.is_none() => {
-                if version(inv, at).await?.is_some() {
+                if version(inv, &at.file).await?.is_some() {
                     continue;
                 }
                 return Err(e);
@@ -295,7 +295,7 @@ async fn remove(inv: &Invocation<'_>, at: &Holding, thing: &str) -> Result<bool>
     for _ in 0..ATTEMPTS {
         // The version first, then whether the thing is in it: a later version than the one
         // read fails the `if-match` below, so the removal is judged on what it rewrites.
-        let Some(id) = version(inv, at).await? else {
+        let Some(id) = version(inv, &at.file).await? else {
             // No file: it holds nothing, so the thing is not there.
             return Ok(false);
         };

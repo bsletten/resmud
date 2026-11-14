@@ -24,6 +24,10 @@
 //! 5. **The write**: every atom, under the clamp. A new atom also joins the world's list. A
 //!    room or a character the verb creates gets its atom of where things are too (the room's
 //!    contents, what the character carries), written after it, so the clamp must cover both.
+//!    An atom that exists is written with `if-match`, the version its patch read, so a take,
+//!    a drop or another verb that wrote it meanwhile is not lost (resmud#62): on a Conflict
+//!    the atom is read, patched and checked against the shapes again, a few times, and then
+//!    the verb is refused as a Conflict. The atoms written before it stay written.
 //!
 //! Every refusal names things by the word a player sees (the verb's name, its author's, `the
 //! lamp`), never by IRI. A signature's own verdict (which hash, which key) is not shown to a
@@ -309,6 +313,69 @@ async fn violations(
     .await
 }
 
+/// Step 4 for one atom: the atom as the plan rewrites it, checked against the realm's
+/// `shapes`, and the version of its file it was read at (`None` when there is no file yet,
+/// so the write creates it). The version is read FIRST: a later version than the one the
+/// patch read fails the write's `if-match`, so the write is judged on what it rewrites.
+async fn patched(
+    inv: &Invocation<'_>,
+    verb: &str,
+    atom: &Atom,
+    plan: &str,
+    target: &str,
+    shapes: &[u8],
+) -> Result<(String, Option<String>)> {
+    let read = crate::edge::version(inv, &atom.file()).await?;
+    let graph = if read.is_some() {
+        format!("{plan} {}", atom.name)
+    } else {
+        plan.to_string()
+    };
+    // An atom of where things are takes the plan's placements and loses nothing; every other
+    // atom takes the plan's triples about its subject.
+    let candidate = match atom.holding() {
+        Some((holder, how)) => {
+            construct(
+                inv,
+                "patch-holding",
+                &graph,
+                json!({
+                    "atom": uri(&atom.name),
+                    "holder": uri(&holder),
+                    "how": uri(&how),
+                    "plan": uri(plan),
+                    "target": uri(target),
+                }),
+            )
+            .await?
+        }
+        None => {
+            construct(
+                inv,
+                "patch",
+                &graph,
+                json!({
+                    "atom": uri(&atom.name),
+                    "plan": uri(plan),
+                    "target": uri(target),
+                }),
+            )
+            .await?
+        }
+    };
+    let refused = violations(inv, shapes.to_vec(), candidate.clone()).await?;
+    if !refused.is_empty() {
+        return Err(Error::InvalidArgument {
+            name: "plan".into(),
+            detail: format!(
+                "the realm's rules refuse the verb {verb}: {}",
+                refused.join("; ")
+            ),
+        });
+    }
+    Ok((candidate, read))
+}
+
 /// The runner, bound at `urn:resmud:verb:id:{verb}` in `realm`.
 pub fn runner(realm: Realm) -> AsyncFnEndpoint {
     let realm = Arc::new(realm);
@@ -408,72 +475,61 @@ pub fn runner(realm: Realm) -> AsyncFnEndpoint {
                 }
             }
 
-            // 4. The shapes, against every rewritten atom.
+            // 4. The shapes, against every rewritten atom, each as it is now.
             let shapes = inv.source(&iri(&realm.shape_iri())).await?.bytes;
             let mut written = Vec::new();
             for atom in atoms {
-                let exists = exists(inv, &atom).await?;
-                let graph = if exists {
-                    format!("{plan} {}", atom.name)
-                } else {
-                    plan.clone()
-                };
-                // An atom of where things are takes the plan's placements and loses nothing;
-                // every other atom takes the plan's triples about its subject.
-                let candidate = match atom.holding() {
-                    Some((holder, how)) => {
-                        construct(
-                            inv,
-                            "patch-holding",
-                            &graph,
-                            json!({
-                                "atom": uri(&atom.name),
-                                "holder": uri(&holder),
-                                "how": uri(&how),
-                                "plan": uri(&plan),
-                                "target": uri(&target),
-                            }),
-                        )
-                        .await?
-                    }
-                    None => {
-                        construct(
-                            inv,
-                            "patch",
-                            &graph,
-                            json!({
-                                "atom": uri(&atom.name),
-                                "plan": uri(&plan),
-                                "target": uri(&target),
-                            }),
-                        )
-                        .await?
-                    }
-                };
-                let refused = violations(inv, shapes.clone(), candidate.clone()).await?;
-                if !refused.is_empty() {
-                    return Err(Error::InvalidArgument {
-                        name: "plan".into(),
-                        detail: format!(
-                            "the realm's rules refuse the verb {verb}: {}",
-                            refused.join("; ")
-                        ),
-                    });
-                }
-                written.push((atom, candidate, exists));
+                let (candidate, read) = patched(inv, &verb, &atom, &plan, &target, &shapes).await?;
+                written.push((atom, candidate, read));
             }
 
             // 5. The write, under the clamp. Where things are is written last, so a thing a
             //    verb creates and places exists before any room lists it: a failure between
             //    the writes leaves a thing nowhere, never a room listing a thing that is not.
+            //    Every atom that exists is written with `if-match` the version it was patched
+            //    from, so a take, a drop or another verb that wrote it meanwhile is not lost
+            //    (resmud#62): the atom is read, patched and checked again, as the edges do.
             written.sort_by_key(|(atom, _, _)| atom.holding().is_some());
             let mut created = Vec::new();
-            for (atom, candidate, exists) in &written {
-                let write = Request::new(Verb::Sink, iri(&atom.file()))
-                    .with_arg("content", ArgRef::Inline(candidate.clone().into_bytes()));
-                inv.issue_attenuated(write, scopes.iter().map(String::as_str))
-                    .await?;
-                if !exists {
+            for (atom, mut candidate, mut read) in written {
+                let mut attempts = 1;
+                loop {
+                    let mut write = Request::new(Verb::Sink, iri(&atom.file()))
+                        .with_arg("content", ArgRef::Inline(candidate.clone().into_bytes()));
+                    if let Some(id) = &read {
+                        write = write.with_arg("if-match", ArgRef::Inline(id.clone().into_bytes()));
+                    }
+                    let lost = match inv
+                        .issue_attenuated(write, scopes.iter().map(String::as_str))
+                        .await
+                    {
+                        Ok(_) => false,
+                        Err(Error::Conflict(_)) if read.is_some() => true,
+                        // Creating the file, which another writer created first: `ikigai-fs`
+                        // refuses to replace a file that appeared while the write was in
+                        // flight, so patch the file that is there now.
+                        Err(e @ Error::Endpoint(_)) if read.is_none() => {
+                            if crate::edge::version(inv, &atom.file()).await?.is_none() {
+                                return Err(e);
+                            }
+                            true
+                        }
+                        Err(e) => return Err(e),
+                    };
+                    if !lost {
+                        break;
+                    }
+                    if attempts == crate::edge::ATTEMPTS {
+                        return Err(Error::Conflict(format!(
+                            "the {} kept changing while the verb {verb} ran, so it did not \
+                             finish: try again",
+                            atom.said()
+                        )));
+                    }
+                    attempts += 1;
+                    (candidate, read) = patched(inv, &verb, &atom, &plan, &target, &shapes).await?;
+                }
+                if read.is_none() {
                     created.push(atom.name.clone());
                 }
             }
