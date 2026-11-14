@@ -16,8 +16,11 @@
 //!    is `Denied`, and the file write runs under the clamp too, so the file module's own
 //!    path-ACL refuses it a second time.
 //! 3. **The plan** (`…:plan`): the source compiled to a graph by ikigai-sexpr's transreptor,
-//!    golden-threaded from the source. Its subjects name the atoms it rewrites; one under
-//!    `urn:resmud:realm:` or `urn:resmud:author:` is SEALED, and the whole verb is `Denied`.
+//!    golden-threaded from the source. Its subjects name the atoms it rewrites (the stored
+//!    `subject` query), except a triple that places something: a thing placed in a room or
+//!    carried names the contents or carries atom, and a character placed in a room names the
+//!    character's own atom, where its place is said. One under `urn:resmud:realm:` or
+//!    `urn:resmud:author:` is SEALED, and the whole verb is `Denied`.
 //! 4. **The shapes**: each rewritten atom (the stored `patch` CONSTRUCT) is checked against
 //!    the realm's shapes in a corridor holding only the candidate and the shapes (the stored
 //!    `validate` query). A violation is `InvalidArgument`, naming the thing and the rule.
