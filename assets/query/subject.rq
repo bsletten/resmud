@@ -1,8 +1,9 @@
 # The atoms a verb's plan writes, with its argument placeholder filled in, one name per line.
-# A triple names its subject's atom, except one that places a thing: a room containing a
-# thing names the room's contents atom (`…:content`), and a character carrying a thing names
-# its carries atom (`…:carries`). So a grant can cover where things are without covering the
-# rooms and characters themselves.
+# A triple names its subject's atom, except one that places something: a room containing a
+# thing names the room's contents atom (`…:content`), a character carrying a thing names its
+# carries atom (`…:carries`), and a room containing a character names the CHARACTER's atom,
+# because a character's place is said by its own atom. So a grant can cover where things and
+# characters are without covering the rooms themselves.
 PREFIX rm:  <https://iriref.org/resmud/core#>
 PREFIX rms: <https://iriref.org/resmud/space#>
 SELECT DISTINCT ?line ?plan ?target WHERE {
@@ -10,10 +11,13 @@ SELECT DISTINCT ?line ?plan ?target WHERE {
   BIND(IF(?written = <urn:resmud:argument:name:target>, ?target, ?written) AS ?s)
   BIND(IF(?value = <urn:resmud:argument:name:target>, ?target, ?value) AS ?o)
   BIND(STRSTARTS(STR(?o), "urn:resmud:thing:id:") AS ?placed)
-  BIND(IF(?placed && ?p = rms:contains && STRSTARTS(STR(?s), "urn:resmud:room:id:"),
+  BIND(?p = rms:contains && STRSTARTS(STR(?s), "urn:resmud:room:id:") AS ?inroom)
+  BIND(IF(?placed && ?inroom,
           CONCAT(STR(?s), ":content"),
           IF(?placed && ?p = rm:carries && STRSTARTS(STR(?s), "urn:resmud:character:id:"),
              CONCAT(STR(?s), ":carries"),
-             STR(?s))) AS ?line)
+             IF(?inroom && STRSTARTS(STR(?o), "urn:resmud:character:id:"),
+                STR(?o),
+                STR(?s)))) AS ?line)
 }
 ORDER BY ?line

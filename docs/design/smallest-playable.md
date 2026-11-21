@@ -213,6 +213,17 @@ Building it showed the first design was wrong, or silent, in six places:
   thing out of a room stays the moves' job. The runner writes a created thing before the atom that
   places it, so a failure between them leaves a thing nowhere, never a room listing a thing that
   does not exist (`tests/play.rs`, `a_verb_can_create_a_thing_and_place_it_here`).
+- **A verb can place a character it creates** (resmud#61). A character's place is the triple
+  `<room> rms:contains <character>` in the character's OWN atom, so the runner names that
+  triple's atom by its object, the character, not its subject, the room: hiring bob into the
+  kitchen writes `character/bob.ttl` (and bob's new carries atom), never the kitchen's atom or
+  its contents atom, and needs `urn:cap:resmud:write:character`, not `…:write:room`. The place
+  is written in the same atom as the character, so there is no moment when one exists without
+  the other. A character is in one room, so for a character that exists the plan's place
+  REPLACES the one its atom said: a verb that may write characters can move one, without an
+  exit, as it could already rewrite anything else about it (`tests/holding.rs`,
+  `a_verb_that_creates_a_character_can_place_it` and
+  `a_verb_that_places_a_character_replaces_where_it_was`).
 - **A verb writes with `if-match` too** (resmud#62). The runner reads each atom's version before it
   patches it, and writes every atom that exists with `if-match` that version, as the moves do. A
   take, a drop or another verb that wrote the atom meanwhile fails the write as Conflict, and the
@@ -256,9 +267,9 @@ character's carries atom. Two rules cover it (`tests/holding.rs`):
   `urn:cap:resmud:write:content`, or the verb is refused before anything is written. The first
   take or drop into a room or character with no holding atom creates it.
 
-A verb that creates a character cannot yet say where it is: a character's place is the triple
-`<room> rms:contains <character>` in the character's own atom, and the runner names a triple's
-atom by its subject, the room.
+A verb that creates a character can say where it is: the placing triple
+`<room> rms:contains <character>` is written to the character's own atom (see
+[What the build changed](#what-the-build-changed)).
 
 ## Economics
 

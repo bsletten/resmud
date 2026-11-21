@@ -245,6 +245,75 @@ fn a_verb_that_creates_a_character_creates_its_carries_atom() {
 }
 
 #[test]
+fn a_verb_that_creates_a_character_can_place_it() {
+    let w = World::new();
+    // Characters and what they carry, but not rooms: a character's place is said by its own
+    // atom, so hiring bob into the kitchen writes bob's atom and leaves the kitchen alone.
+    grant(&w, &["character", "carries"]);
+    let kitchen = w.file("room/kitchen.ttl");
+    w.publish(
+        "hire",
+        r#"(graph
+  (prefix (rm "https://iriref.org/resmud/core#") (rms "https://iriref.org/resmud/space#")
+          (rdfs "http://www.w3.org/2000/01/rdf-schema#"))
+  ((iri "urn:resmud:character:id:bob") a rm:Character)
+  ((iri "urn:resmud:character:id:bob") rdfs:label "Bob")
+  ((iri "urn:resmud:character:id:bob") rm:description "A cook.")
+  ((iri "urn:resmud:room:id:kitchen") rms:contains (iri "urn:resmud:character:id:bob")))"#,
+    );
+    assert_eq!(w.play("sink urn:resmud:verb:id:hire").unwrap(), "You hire.");
+    assert!(w
+        .file("character/bob.ttl")
+        .contains("urn:resmud:room:id:kitchen"));
+    assert_eq!(
+        w.file("room/kitchen.ttl"),
+        kitchen,
+        "the room itself is unchanged"
+    );
+    assert!(!w.file("content/kitchen.ttl").contains("bob"));
+    assert_eq!(
+        w.play("source urn:resmud:character:id:bob:place").unwrap(),
+        "kitchen"
+    );
+    assert!(w
+        .play("source urn:resmud:character:id:alice:sees")
+        .unwrap()
+        .lines()
+        .any(|l| l == "urn:resmud:character:id:bob"));
+}
+
+#[test]
+fn a_verb_that_places_a_character_replaces_where_it_was() {
+    let w = World::new();
+    grant(&w, &["character"]);
+    let (kitchen, garden) = (w.file("room/kitchen.ttl"), w.file("room/garden.ttl"));
+    w.publish(
+        "summon",
+        r#"(graph
+  (prefix (rms "https://iriref.org/resmud/space#"))
+  ((iri "urn:resmud:room:id:garden") rms:contains (iri "urn:resmud:character:id:alice")))"#,
+    );
+    assert_eq!(
+        w.play("sink urn:resmud:verb:id:summon").unwrap(),
+        "You summon."
+    );
+    let alice = w.file("character/alice.ttl");
+    assert!(alice.contains("urn:resmud:room:id:garden"));
+    assert!(
+        !alice.contains("urn:resmud:room:id:kitchen"),
+        "a character is in one room"
+    );
+    assert!(alice.contains("A traveler with ink on her fingers."));
+    assert_eq!(w.file("room/kitchen.ttl"), kitchen);
+    assert_eq!(w.file("room/garden.ttl"), garden);
+    assert_eq!(
+        w.play("source urn:resmud:character:id:alice:place")
+            .unwrap(),
+        "garden"
+    );
+}
+
+#[test]
 fn creating_a_room_needs_a_grant_for_its_contents_too() {
     let w = World::new();
     // Rooms, but not what a room contains: the new room's contents atom is a write the grant
