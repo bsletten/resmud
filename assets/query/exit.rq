@@ -1,12 +1,37 @@
-# A room's exits, by bearing, as one sentence.
+# A room's exits, as one sentence: one row per exit, by bearing and then by the exit's name,
+# so a room's way out is said the same way every time (resmud#60). The query adapter joins
+# the rows with a comma and a space (`separator`), into one line. The first exit in that
+# order opens the sentence ("Exits: ") and the last closes it ("."); a room with no exit
+# answers one row saying so. The order is the outer ORDER BY's, the one order SPARQL
+# promises: GROUP_CONCAT's is unspecified.
 PREFIX rms: <https://iriref.org/resmud/space#>
-SELECT ?subject (IF(COUNT(?bearing) = 0, "There is no way out.",
-                    CONCAT("Exits: ", GROUP_CONCAT(?name; separator=", "), ".")) AS ?line)
-WHERE {
-  OPTIONAL {
+SELECT ?line ?subject WHERE {
+  {
     ?subject rms:exit ?exit .
     ?exit rms:bearing ?bearing .
     BIND(STRAFTER(STR(?bearing), "#") AS ?name)
+    # Whether another exit of this room comes before (or after) this one in the order.
+    BIND(EXISTS {
+      ?subject rms:exit ?other .
+      ?other rms:bearing ?otherBearing .
+      FILTER(STRAFTER(STR(?otherBearing), "#") < ?name
+             || (STRAFTER(STR(?otherBearing), "#") = ?name && STR(?other) < STR(?exit)))
+    } AS ?after)
+    BIND(EXISTS {
+      ?subject rms:exit ?other .
+      ?other rms:bearing ?otherBearing .
+      FILTER(STRAFTER(STR(?otherBearing), "#") > ?name
+             || (STRAFTER(STR(?otherBearing), "#") = ?name && STR(?other) > STR(?exit)))
+    } AS ?before)
+    BIND(CONCAT(IF(?after, "", "Exits: "), ?name, IF(?before, "", ".")) AS ?line)
+  }
+  UNION
+  {
+    FILTER NOT EXISTS {
+      ?subject rms:exit ?any .
+      ?any rms:bearing ?anyBearing .
+    }
+    BIND("There is no way out." AS ?line)
   }
 }
-GROUP BY ?subject
+ORDER BY STR(?name) STR(?exit)
