@@ -368,11 +368,13 @@ pub fn resource_map(realm: &Realm) -> Result<AliasTable, DeclarationError> {
             "urn:resmud:room:id:{room}:content:graph",
         )
         .fixing(FixedArgument::value("separator", " ")),
+        // One row per exit, by bearing then by name, joined into one sentence.
         query_atom(
             "urn:resmud:room:id:{room}:exit",
             "exit",
             "urn:resmud:room:id:{room}",
-        ),
+        )
+        .fixing(FixedArgument::value("separator", ", ")),
         query_atom(
             "urn:resmud:thing:id:{thing}:description",
             "description",

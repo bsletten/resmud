@@ -401,3 +401,105 @@ fn a_room_and_an_inventory_list_their_things_by_label_then_by_name() {
         "Nothing here can be taken."
     );
 }
+
+#[test]
+fn a_room_lists_its_exits_by_bearing_then_by_name() {
+    // A kitchen with three exits, written in each of the six orders: the exits line lists
+    // them by bearing (`east, north, west`) every time, whatever order the atom says them in.
+    let exits = [
+        ("west", "urn:resmud:room:id:garden"),
+        ("north", "urn:resmud:room:id:garden"),
+        ("east", "urn:resmud:room:id:garden"),
+    ];
+    let orders = [
+        [0, 1, 2],
+        [0, 2, 1],
+        [1, 0, 2],
+        [1, 2, 0],
+        [2, 0, 1],
+        [2, 1, 0],
+    ];
+    for order in orders {
+        let w = World::new();
+        let mut kitchen = String::from(
+            "@prefix rm:   <https://iriref.org/resmud/core#> .\n\
+             @prefix rms:  <https://iriref.org/resmud/space#> .\n\
+             @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .\n\n\
+             <urn:resmud:room:id:kitchen> a rms:Room ;\n    rdfs:label \"kitchen\" ;\n    \
+             rm:description \"A warm kitchen. Bread is cooling on the sill.\"",
+        );
+        for i in order {
+            kitchen.push_str(&format!(
+                " ;\n    rms:exit <urn:resmud:room:id:kitchen:exit:bearing:{}>",
+                exits[i].0
+            ));
+        }
+        kitchen.push_str(" .\n");
+        for i in order {
+            let (bearing, to) = exits[i];
+            kitchen.push_str(&format!(
+                "\n<urn:resmud:room:id:kitchen:exit:bearing:{bearing}> a rms:Exit ;\n    \
+                 rms:bearing rms:{bearing} ;\n    rms:leadsTo <{to}> .\n"
+            ));
+        }
+        std::fs::write(w.root().join("room/kitchen.ttl"), &kitchen).unwrap();
+        assert_eq!(
+            w.play("source urn:resmud:room:id:kitchen:exit").unwrap(),
+            "Exits: east, north, west.",
+            "written in the order {order:?}"
+        );
+    }
+}
+
+#[test]
+fn two_exits_with_one_bearing_are_listed_by_name_and_a_room_with_none_says_so() {
+    // Two exits east, written `east-b` first: by bearing they tie, so `east-a` comes first.
+    let w = World::new();
+    let header = "@prefix rm:   <https://iriref.org/resmud/core#> .\n\
+                  @prefix rms:  <https://iriref.org/resmud/space#> .\n\
+                  @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .\n\n\
+                  <urn:resmud:room:id:kitchen> a rms:Room ;\n    rdfs:label \"kitchen\" ;\n    \
+                  rm:description \"A warm kitchen. Bread is cooling on the sill.\"";
+    let exit = |key: &str, bearing: &str| {
+        format!(
+            "\n<urn:resmud:room:id:kitchen:exit:id:{key}> a rms:Exit ;\n    \
+             rms:bearing rms:{bearing} ;\n    rms:leadsTo <urn:resmud:room:id:garden> .\n"
+        )
+    };
+    let kitchen = format!(
+        "{header} ;\n    rms:exit <urn:resmud:room:id:kitchen:exit:id:east-b> ;\n    \
+         rms:exit <urn:resmud:room:id:kitchen:exit:id:west> ;\n    \
+         rms:exit <urn:resmud:room:id:kitchen:exit:id:east-a> .\n{}{}{}",
+        exit("east-b", "east"),
+        exit("west", "west"),
+        exit("east-a", "east"),
+    );
+    std::fs::write(w.root().join("room/kitchen.ttl"), &kitchen).unwrap();
+    assert_eq!(
+        w.play("source urn:resmud:room:id:kitchen:exit").unwrap(),
+        "Exits: east, east, west."
+    );
+
+    // One exit is the whole sentence, opened and closed by the same row.
+    let w = World::new();
+    std::fs::write(
+        w.root().join("room/kitchen.ttl"),
+        format!(
+            "{header} ;\n    rms:exit <urn:resmud:room:id:kitchen:exit:id:west> .\n{}",
+            exit("west", "west")
+        ),
+    )
+    .unwrap();
+    assert_eq!(
+        w.play("source urn:resmud:room:id:kitchen:exit").unwrap(),
+        "Exits: west."
+    );
+
+    // No exit at all.
+    let w = World::new();
+    std::fs::write(w.root().join("room/kitchen.ttl"), format!("{header} .\n")).unwrap();
+    assert_eq!(
+        w.play("source urn:resmud:room:id:kitchen:exit").unwrap(),
+        "There is no way out."
+    );
+}

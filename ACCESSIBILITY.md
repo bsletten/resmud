@@ -11,7 +11,7 @@ conformance claim. Adapted from the [ACCESSIBILITY.md template](https://github.c
 | Status | Evaluation in progress. No conformance claim. |
 | Owner | the maintainers of this repository |
 | Report a barrier | [a GitHub issue](https://github.com/bsletten/resmud/issues/new?labels=accessibility) with the `accessibility` label; anything security-sensitive through [private vulnerability reporting](https://github.com/bsletten/resmud/security/advisories/new) |
-| Last reviewed | 2026-11-08 |
+| Last reviewed | 2026-11-21 |
 
 ## What it emits that people read
 
@@ -107,7 +107,10 @@ What the build now holds, and how:
   the inventory line each list their things by label, and two things with the same label by their
   names, so a screen-reader user hears the same room the same way on every look, whatever order
   the things were put there in (`tests/play.rs`,
-  `a_room_and_an_inventory_list_their_things_by_label_then_by_name`).
+  `a_room_and_an_inventory_list_their_things_by_label_then_by_name`). The exits line lists a
+  room's exits by bearing, and two exits with the same bearing by their names (`Exits: east,
+  north, west.`), whatever order the room's file says them in
+  (`a_room_lists_its_exits_by_bearing_then_by_name`).
 - **A raw line sees no further than `look`.** At the door, `source urn:resmud:thing:id:lamp:description`
   of a lamp out of sight is refused with the sentence and the typed error `look lamp` gets, the
   same for a thing elsewhere as for a name that exists nowhere (`tests/sight.rs`,
@@ -193,3 +196,4 @@ technology, if you are comfortable sharing them. Anything security-sensitive goe
 | 2026-11-08 | `look` and a name describes only what the looker can see, a thing, a character or the room, and says `You see no lamp here.` for anything else, whether it exists elsewhere or nowhere (resmud#56). |
 | 2026-11-08 | A room's things and an inventory are listed by label, then by name, the same way every time; the limitation that they were in no promised order is gone (resmud#58). |
 | 2026-11-08 | A raw `source`, `sink` or `exists` line at the door reaches only what a player's corridor exposes, and refuses a name out of sight as `look` does; the limitation that the REPL's grammar read past `look` is gone (resmud#63). |
+| 2026-11-21 | A room's exits are listed by bearing, then by name, the same way every time (resmud#60). |
